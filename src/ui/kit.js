@@ -3,6 +3,7 @@
    Warm paper, the same palette the web version uses.
    ========================================================================== */
 
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
@@ -198,6 +199,73 @@ export function Tick({ on, over, onPress, disabled }) {
         {over ? "!" : "✓"}
       </Text>
     </Pressable>
+  );
+}
+
+/* ---------------------------------------------------------------- select --
+   Expands in place rather than opening a modal.
+
+   The first attempt was a Modal, which broke: this control lives inside the
+   target editor, which is itself a Modal, and a modal inside a modal loses its
+   layout on the web build — the option list drew over the form instead of
+   sliding up beneath it. Expanding inline sidesteps nesting altogether and
+   behaves identically on the phone and in a browser.
+
+   The list is not separately scrollable on purpose. A scroll view inside the
+   editor's scroll view fights for the same gesture; letting the sheet grow and
+   scroll as one is both simpler and easier to use.                          */
+
+export function Select({ value, options, onChange, placeholder = "Choose…" }) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        style={({ pressed }) => [S.input, {
+          flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+          opacity: pressed ? 0.7 : 1,
+          borderColor: open ? C.ink : C.rule,
+          borderBottomLeftRadius: open ? 0 : 10,
+          borderBottomRightRadius: open ? 0 : 10,
+        }]}
+      >
+        <Text style={{ fontSize: 15, color: current ? C.ink : C.ink3 }} numberOfLines={1}>
+          {current ? current.label : placeholder}
+        </Text>
+        <Text style={{ fontSize: 10, color: C.ink3, marginLeft: 8 }}>{open ? "▲" : "▼"}</Text>
+      </Pressable>
+
+      {open && (
+        <View style={{
+          borderWidth: 1, borderTopWidth: 0, borderColor: C.ink,
+          borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
+          backgroundColor: C.card, overflow: "hidden",
+        }}>
+          {options.map((o, i) => {
+            const on = o.value === value;
+            return (
+              <Pressable
+                key={String(o.value)}
+                onPress={() => { onChange(o.value); setOpen(false); }}
+                style={({ pressed }) => [{
+                  flexDirection: "row", alignItems: "center", gap: 10,
+                  paddingVertical: 11, paddingHorizontal: 12,
+                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.ruleSoft,
+                  backgroundColor: pressed ? C.sunk : on ? C.goodSoft : "transparent",
+                }]}
+              >
+                <Text style={{ flex: 1, fontSize: 14.5, color: C.ink, fontWeight: on ? "700" : "400" }}>
+                  {o.label}
+                </Text>
+                {on && <Text style={{ color: C.good, fontSize: 14, fontWeight: "700" }}>✓</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Alert, Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn, CatHeader, Chip } from "../ui/kit";
+import { C, S, Btn, CatHeader, Chip, Select } from "../ui/kit";
 import * as M from "../model/targets";
 import { CATEGORY_COLORS, SUGGESTIONS, UNITS } from "../model/seed";
 import { CONFIG } from "../config";
@@ -229,11 +229,12 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
                  placeholder="e.g. Strength training" />
 
       <Text style={[S.label, { marginTop: 12 }]}>Category</Text>
-      <View style={[S.row, { flexWrap: "wrap" }]}>
-        {(doc.categories || []).slice().sort((a, b) => a.order - b.order).map((c) => (
-          <Seg key={c.id} on={form.catId === c.id} label={`${c.emoji} ${c.name}`} onPress={() => set({ catId: c.id })} small />
-        ))}
-      </View>
+      <Select
+        value={form.catId}
+        onChange={(v) => set({ catId: v })}
+        options={(doc.categories || []).slice().sort((a, b) => a.order - b.order)
+          .map((c) => ({ value: c.id, label: `${c.emoji}  ${c.name}` }))}
+      />
 
       <Text style={[S.label, { marginTop: 12 }]}>What are you tracking?</Text>
       <View style={[S.row, { gap: 6 }]}>
@@ -273,11 +274,12 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       {form.kind === "amount" && (
         <>
           <Text style={[S.label, { marginTop: 12 }]}>Unit</Text>
-          <View style={[S.row, { flexWrap: "wrap" }]}>
-            {UNITS.map((u) => (
-              <Seg key={u || "none"} small on={form.unit === u} label={u || "none"} onPress={() => set({ unit: u })} />
-            ))}
-          </View>
+          <Select
+            value={form.unit}
+            onChange={(v) => set({ unit: v })}
+            placeholder="No unit"
+            options={UNITS.map((u) => ({ value: u, label: u || "— no unit —" }))}
+          />
         </>
       )}
 
@@ -505,15 +507,15 @@ function Sheet({ title, onClose, children }) {
   );
 }
 
-const Seg = ({ on, label, sub, onPress, small }) => (
+/* Only ever two or three options wide — the long lists became dropdowns. */
+const Seg = ({ on, label, sub, onPress }) => (
   <Pressable onPress={onPress}
     style={{
-      flex: small ? 0 : 1, borderWidth: 1, borderRadius: 9, alignItems: "center",
-      paddingVertical: small ? 7 : 9, paddingHorizontal: small ? 10 : 6,
-      marginRight: small ? 6 : 0, marginTop: small ? 6 : 0,
+      flex: 1, borderWidth: 1, borderRadius: 9, alignItems: "center",
+      paddingVertical: 9, paddingHorizontal: 6,
       borderColor: on ? C.ink : C.rule, backgroundColor: on ? C.ink : C.card,
     }}>
-    <Text style={{ fontSize: small ? 12 : 13, fontWeight: "600", color: on ? C.paper : C.ink2 }}>{label}</Text>
+    <Text style={{ fontSize: 13, fontWeight: "600", color: on ? C.paper : C.ink2 }}>{label}</Text>
     {!!sub && <Text style={{ fontSize: 10, color: on ? C.paper : C.ink3, opacity: 0.8, marginTop: 1 }}>{sub}</Text>}
   </Pressable>
 );

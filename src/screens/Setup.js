@@ -1,9 +1,9 @@
 /* Setup — categories, targets, reminders and the Drive connection. */
 
 import { useState } from "react";
-import { Alert, Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn, CatHeader, Chip, Select } from "../ui/kit";
+import { C, S, Btn, CatHeader, Chip, Confirm, Select } from "../ui/kit";
 import * as M from "../model/targets";
 import { CATEGORY_COLORS, SUGGESTIONS, UNITS } from "../model/seed";
 import { CONFIG } from "../config";
@@ -11,6 +11,7 @@ import { CONFIG } from "../config";
 export default function Setup({ doc, update, user, folderUrl, signOut, disconnect }) {
   const [editTarget, setEditTarget] = useState(null);   // { target } | { catId }
   const [editCat, setEditCat] = useState(null);         // { cat } | {}
+  const [confirming, setConfirming] = useState(null);   // { title, message, onConfirm }
 
   const cats = (doc.categories || []).slice().sort((a, b) => a.order - b.order);
   const targetsIn = (id) => (doc.targets || []).filter((t) => t.catId === id).sort((a, b) => a.order - b.order);
@@ -26,11 +27,7 @@ export default function Setup({ doc, update, user, folderUrl, signOut, disconnec
       }],
     }));
 
-  const confirm = (title, message, onYes) =>
-    Alert.alert(title, message, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: onYes },
-    ]);
+  const confirm = (title, message, onConfirm) => setConfirming({ title, message, onConfirm });
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
@@ -138,6 +135,7 @@ export default function Setup({ doc, update, user, folderUrl, signOut, disconnec
         state={editCat} update={update}
         onClose={() => setEditCat(null)} nextOrder={nextOrder}
       />
+      <Confirm state={confirming} onClose={() => setConfirming(null)} />
     </ScrollView>
   );
 }

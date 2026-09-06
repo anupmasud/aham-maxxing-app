@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 export const C = {
@@ -266,6 +266,43 @@ export function Select({ value, options, onChange, placeholder = "Choose…" }) 
         </View>
       )}
     </View>
+  );
+}
+
+/* --------------------------------------------------------------- confirm --
+   React Native's Alert.alert is an empty function in react-native-web — it
+   does not warn, it simply does nothing — so anything guarded by it silently
+   stopped working in the browser. This is the same prompt built from a Modal,
+   which behaves identically on both platforms.                              */
+
+export function Confirm({ state, onClose }) {
+  if (!state) return null;
+  const { title, message, confirmLabel = "Delete", onConfirm } = state;
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable
+        onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.5)", alignItems: "center", justifyContent: "center", padding: 26 }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{ backgroundColor: C.paper, borderRadius: 16, padding: 20, width: "100%", maxWidth: 380 }}
+        >
+          <Text style={[S.h2, { marginBottom: 8 }]}>{title}</Text>
+          {!!message && <Text style={[S.body, { marginBottom: 4 }]}>{message}</Text>}
+          <View style={{ flexDirection: "row", gap: 9, marginTop: 12 }}>
+            <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
+            <Btn
+              danger
+              label={confirmLabel}
+              style={{ flex: 1 }}
+              onPress={() => { onConfirm(); onClose(); }}
+            />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 

@@ -209,7 +209,9 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
 
     const clean = {
       ...form, name, types, plan,
-      goal: Math.max(0, Number(form.goal) || 1),
+      // A daily tick has no goal to set — the form hides the field, so anything
+      // left in it from a previous shape of the target would be invisible.
+      goal: form.kind === "tick" && form.period === "day" ? 1 : Math.max(0, Number(form.goal) || 1),
       step: Math.max(0.01, Number(form.step) || 1),
       unit: form.kind === "amount" ? form.unit : "",
       days: form.period === "week" ? [...M.ALL_DAYS] : (form.days.length ? form.days : [...M.ALL_DAYS]),

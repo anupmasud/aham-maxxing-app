@@ -19,7 +19,13 @@ export default function Insights({ doc, setDay, setTab }) {
 
   const targets = M.liveTargets(doc.targets || []);
   const log = doc.log || {};
-  const from = doc.createdAt ? M.keyOf(new Date(doc.createdAt)) : M.todayKey();
+  /* The window starts at the earlier of "when this document was made" and
+     "the first day anything was logged". Backfilling last week's entries into
+     a file created today is normal, and bounding by the creation date alone
+     hid all of it — a four-week view showing a single day. */
+  const created = doc.createdAt ? M.keyOf(new Date(doc.createdAt)) : M.todayKey();
+  const logged = Object.keys(doc.log || {}).filter(M.isDateKey).sort()[0];
+  const from = logged && logged < created ? logged : created;
 
   /* The range never reaches back past the day you started, so early weeks do
      not read as a wall of failure you never had the chance to log. */

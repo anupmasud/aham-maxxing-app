@@ -264,5 +264,28 @@ console.log("\n13. hit rates are measured in each target's own unit");
   eq("one hit out of fourteen target-days", Math.round(pooled.pct * 100), 7);
 }
 
+console.log("\n14. a daily tick can only ever be one");
+{
+  // Switching a target from "4x a week" to a daily tick left the 4 behind in a
+  // field the form no longer shows, so it could be done every day and still
+  // read 0%. The goal is clamped when read, which repairs saved documents.
+  const stale = { id: "msg", kind: "tick", dir: "at_least", period: "day", goal: 4, days: M.ALL_DAYS };
+  eq("goal clamps to one", M.goalOf(stale), 1);
+  const log = M.toggle({}, stale, TODAY);
+  eq("ticking it meets it", M.progress(stale, TODAY, log).met, true);
+  eq("and reads as one of one", M.progress(stale, TODAY, log).total, 1);
+
+  const week = { ...stale, period: "week" };
+  eq("a weekly tick keeps its goal", M.goalOf(week), 4);
+  const amount = { ...stale, kind: "amount", goal: 4 };
+  eq("an amount keeps its goal", M.goalOf(amount), 4);
+
+  // Seven days ticked should be seven of seven, not zero.
+  let wk = {};
+  thisWeek.forEach((k) => { wk = M.toggle(wk, stale, k); });
+  const s = M.targetStats(stale, thisWeek, wk);
+  eq("every day ticked is a full week", { done: s.done, n: s.n }, { done: 7, n: 7 });
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -90,6 +90,14 @@ export const isFuture = (dayKey) => daysBetween(todayKey(), dayKey) > 0;
    weekly target the window is the whole week the day falls in; for a daily one
    it is just that day. `met` is the pass/fail; `ratio` drives the bars. */
 
+/* A tick judged daily can only ever be 0 or 1, so its goal is 1 whatever the
+   stored value says. Editing a target from "4x a week" to a daily tick used to
+   leave the 4 behind in a field the form no longer shows, producing a target
+   that could be done every single day and still read 0%. Clamping here repairs
+   documents already saved that way, without touching anyone's file. */
+export const goalOf = (t) =>
+  t.kind === "tick" && t.period === "day" ? 1 : Number(t.goal) || 1;
+
 export function progress(t, dayKey, log) {
   let total;
   let window;
@@ -103,7 +111,7 @@ export function progress(t, dayKey, log) {
   }
   total = round2(total);
 
-  const goal = Number(t.goal) || 1;
+  const goal = goalOf(t);
   const met = t.dir === "at_most" ? total <= goal : total >= goal;
 
   return {

@@ -188,8 +188,24 @@ export async function loadDoc() {
    the app opens after the switch. The JSON file is deliberately left in place
    afterwards rather than deleted: it costs nothing, and it is the way back if
    the sheet is ever mangled by hand. */
-export async function readJsonIfExists(folderId) {
-  const file = await findFile(folderId);
+export async function readJsonIfExists() {
+  /* Searched by name across everything this app can see — which under
+     drive.file is only ever files it made itself — rather than inside one
+     folder. Looking only in the new spreadsheet's folder would miss the old
+     document entirely whenever someone chose to put the spreadsheet somewhere
+     else, and losing a year of entries to a change of folder is not a trade
+     worth making. */
+  const params = new URLSearchParams({
+    q: `name = '${esc(CONFIG.fileName)}' and trashed = false`,
+    spaces: "drive",
+    fields: "files(id, name, modifiedTime)",
+    pageSize: "10",
+  });
+  const data = await json(`${FILES}?${params}`);
+  const files = (data.files || []).sort(
+    (a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime))
+  );
+  const file = files[0] || null;
   if (!file) return null;
   try {
     const res = await req(`${FILES}/${file.id}?alt=media`);

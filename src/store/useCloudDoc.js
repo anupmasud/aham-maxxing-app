@@ -77,7 +77,7 @@ export function useCloudDoc() {
          nothing to leave behind and it is the way back. */
       let doc = remote;
       if (empty) {
-        doc = (await Drive.readJsonIfExists(fid)) || cached || CONFIG.emptyDoc(template);
+        doc = (await Drive.readJsonIfExists()) || cached || CONFIG.emptyDoc(template);
         const saved = await Sheets.saveDoc(id, doc, null, { force: true });
         baseTime.current = saved.modifiedTime;
       } else {

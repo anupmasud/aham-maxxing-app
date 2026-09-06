@@ -5,7 +5,7 @@
    there is no backend and no shared store to leak between accounts.
    ========================================================================== */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
 } from "react-native";
@@ -49,9 +49,18 @@ export default function App() {
   const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
   const [template, setTemplate] = useState("default");
 
-  // Opens on Insights: the first question on picking up the phone is usually
-  // "where am I this week", not "let me log something".
   const [tab, setTab] = useState("insights");
+
+  /* Which screen the app opens on is a preference, and people genuinely differ:
+     some want "where am I this week" before anything else, others open the app
+     to tick one thing off and want to be there already. Applied once, when the
+     document first arrives — after that, moving between tabs is theirs. */
+  const openedOn = useRef(false);
+  useEffect(() => {
+    if (!doc || openedOn.current) return;
+    openedOn.current = true;
+    setTab(doc.homeTab === "today" ? "today" : "insights");
+  }, [doc]);
   const [day, setDay] = useState(M.todayKey());
 
   /* Reschedule whenever the reminder settings change, or when what is still

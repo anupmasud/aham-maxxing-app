@@ -21,6 +21,7 @@ const eq = (label, got, want) => {
 
 const doc = {
   version: 1,
+  template: "default",
   createdAt: "2026-08-01T00:00:00.000Z",
   reminders: { enabled: true, hour: 20, minute: 30 },
   categories: [
@@ -52,7 +53,7 @@ const doc = {
 console.log("\n1. what the tabs look like");
 {
   const tabs = M.docToSheets(doc);
-  eq("four tabs", Object.keys(tabs).sort(), ["Categories", "Log", "Targets", "Types"]);
+  eq("five tabs", Object.keys(tabs).sort(), ["Categories", "Log", "Settings", "Targets", "Types"]);
   eq("targets carry the category by name", tabs.Targets[1][1], "Movement");
   eq("restricted days written as names", tabs.Targets[3][9], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][9], "All");
@@ -75,6 +76,34 @@ console.log("\n2. the round trip loses nothing");
   eq("targets", back.targets, doc.targets);
   eq("log", back.log, doc.log);
   eq("reminders carried through", back.reminders, doc.reminders);
+  eq("the starting set is remembered", back.template, doc.template);
+}
+
+console.log("\n5. preferences survive a device that has never seen them");
+{
+  const tabs = M.docToSheets({ ...doc, homeTab: "today" });
+
+  // Read with no in-memory fallback at all — a fresh install, a second phone.
+  const cold = M.sheetsToDoc(tabs);
+  eq("reminder time is not lost", cold.reminders, { enabled: true, hour: 20, minute: 30 });
+  eq("which screen it opens on", cold.homeTab, "today");
+  eq("the starting set", cold.template, "default");
+  eq("the creation date", cold.createdAt, doc.createdAt);
+
+  // Defaults, for a document written before the Settings tab existed.
+  const legacy = M.docToSheets(doc);
+  delete legacy.Settings;
+  const old = M.sheetsToDoc(legacy);
+  eq("no settings tab falls back sanely", old.reminders, { enabled: false, hour: 20, minute: 0 });
+  eq("and opens on insights", old.homeTab, "insights");
+
+  // Someone editing the sheet by hand.
+  const edited = M.docToSheets(doc);
+  edited.Settings = edited.Settings.map((r) =>
+    r[0] === "reminderHour" ? ["reminderHour", 7] : r[0] === "opensOn" ? ["opensOn", "today"] : r);
+  const read = M.sheetsToDoc(edited);
+  eq("a hand-edited reminder hour takes effect", read.reminders.hour, 7);
+  eq("a hand-edited home screen takes effect", read.homeTab, "today");
 }
 
 console.log("\n3. it survives the things a person does to a spreadsheet");

@@ -124,6 +124,21 @@ export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut,
         <Btn label="Reorganise into another set" onPress={() => setReorganising(true)} />
       </View>
 
+      <View style={[S.card, S.cardPad]}>
+        <Text style={[S.h2, { marginBottom: 6 }]}>Opens on</Text>
+        <Text style={S.muted}>
+          Which screen you land on when you open the app.
+        </Text>
+        <View style={[S.row, { gap: 6, marginTop: 12 }]}>
+          <Seg on={(doc.homeTab || "insights") === "insights"}
+               label="This week" sub="where you are"
+               onPress={() => update((d) => ({ ...d, homeTab: "insights" }))} />
+          <Seg on={doc.homeTab === "today"}
+               label="Today" sub="what is left"
+               onPress={() => update((d) => ({ ...d, homeTab: "today" }))} />
+        </View>
+      </View>
+
       <Reminders doc={doc} update={update} />
 
       <View style={[S.card, S.cardPad]}>

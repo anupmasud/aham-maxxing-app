@@ -24,7 +24,9 @@
 
 import { ALL_DAYS, DOW, isDateKey, round2 } from "./targets";
 
-export const TABS = { CATS: "Categories", TARGETS: "Targets", TYPES: "Types", LOG: "Log" };
+export const TABS = {
+  CATS: "Categories", TARGETS: "Targets", TYPES: "Types", LOG: "Log", SETTINGS: "Settings",
+};
 
 const norm = (v) => String(v == null ? "" : v).trim();
 const lower = (v) => norm(v).toLowerCase().replace(/[\s_-]+/g, "");
@@ -66,6 +68,7 @@ export const CAT_HEAD = ["id", "name", "emoji", "colour", "order"];
 export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period",
                          "goal", "unit", "step", "days", "order", "archived"];
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
+export const SETTINGS_HEAD = ["setting", "value"];
 
 /* ------------------------------------------------------------------ out -- */
 
@@ -133,11 +136,31 @@ function cellOut(t, raw) {
   return "";
 }
 
+/* Preferences, as plain rows.
+
+   These used to live only in memory and be carried from one load to the next,
+   which meant they were quietly lost the moment the app was opened somewhere
+   it had not been opened before — a reminder set for 7am reverting to a
+   default nobody chose. Anything worth setting is worth writing down. */
+export function settingsOut(doc) {
+  const r = doc.reminders || {};
+  return [
+    SETTINGS_HEAD,
+    ["createdAt", doc.createdAt || ""],
+    ["template", doc.template || "default"],
+    ["opensOn", doc.homeTab || "insights"],
+    ["reminderEnabled", r.enabled ? "TRUE" : "FALSE"],
+    ["reminderHour", r.hour == null ? 20 : r.hour],
+    ["reminderMinute", r.minute == null ? 0 : r.minute],
+  ];
+}
+
 export const docToSheets = (doc) => ({
   [TABS.CATS]: categoriesOut(doc),
   [TABS.TARGETS]: targetsOut(doc),
   [TABS.TYPES]: typesOut(doc),
   [TABS.LOG]: logOut(doc),
+  [TABS.SETTINGS]: settingsOut(doc),
 });
 
 /* ------------------------------------------------------------------- in -- */
@@ -221,10 +244,26 @@ export function sheetsToDoc(tabs, base = {}) {
     if (Object.keys(day).length) log[date] = day;
   });
 
+  /* Settings read from the sheet win; whatever was in memory is only a
+     fallback for a document written before this tab existed. */
+  const setting = {};
+  rows(TABS.SETTINGS).forEach((r) => { setting[lower(r[0])] = norm(r[1]); });
+  const pick = (key, fallback) => (setting[lower(key)] !== undefined && setting[lower(key)] !== ""
+    ? setting[lower(key)] : fallback);
+
+  const baseReminders = base.reminders || {};
   return {
     version: 1,
-    createdAt: base.createdAt || new Date().toISOString(),
-    reminders: base.reminders || { enabled: false, hour: 20, minute: 0 },
+    createdAt: pick("createdAt", base.createdAt || new Date().toISOString()),
+    template: pick("template", base.template || "default"),
+    homeTab: pick("opensOn", base.homeTab || "insights") === "today" ? "today" : "insights",
+    reminders: {
+      enabled: setting[lower("reminderEnabled")] !== undefined
+        ? bool(setting[lower("reminderEnabled")])
+        : !!baseReminders.enabled,
+      hour: num(pick("reminderHour", baseReminders.hour == null ? 20 : baseReminders.hour), 20),
+      minute: num(pick("reminderMinute", baseReminders.minute == null ? 0 : baseReminders.minute), 0),
+    },
     categories,
     targets,
     log,

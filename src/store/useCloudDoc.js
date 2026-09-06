@@ -51,7 +51,7 @@ export function useCloudDoc() {
 
   /* --------------------------------------------------------------- load -- */
 
-  const load = useCallback(async (u) => {
+  const load = useCallback(async (u, createIn = null) => {
     if (!isAllowed(u.email)) { setStatus("not-allowed"); return; }
 
     // Paint from cache first so there is no blank screen while Drive answers.
@@ -60,7 +60,14 @@ export function useCloudDoc() {
     setStatus(cached ? "ready" : "loading");
 
     try {
-      const { id, folderId: fid, doc: remote, modifiedTime, empty } = await Sheets.loadDoc();
+      const found = await Sheets.loadDoc({ createIn });
+
+      /* Nothing exists yet and nobody has said where it should go. Ask, rather
+         than quietly creating a spreadsheet somewhere in their Drive and
+         mentioning it afterwards. */
+      if (found.needsLocation) { setStatus("choose-location"); return; }
+
+      const { id, folderId: fid, doc: remote, modifiedTime, empty } = found;
       fileId.current = id;
       folderId.current = fid;
 
@@ -210,6 +217,13 @@ export function useCloudDoc() {
      stops offering, so an ordinary sign-in will not get the scope back. */
   const grantAccess = useCallback(() => signIn({ force: true }), [signIn]);
 
+  /* Creates the spreadsheet in the folder they chose. */
+  const createIn = useCallback(async (path) => {
+    if (!user) return;
+    setStatus("loading");
+    await load(user, path && path.length ? path : CONFIG.folderPath);
+  }, [load, user]);
+
   /* The reliable last resort: hand the authorisation back, then start over.
      Nothing is deleted — the spreadsheet stays in Drive either way. */
   const resetPermissions = useCallback(async () => {
@@ -254,7 +268,7 @@ export function useCloudDoc() {
   return {
     user, doc, status, error, conflict,
     update, syncNow, resolveConflict,
-    signIn, signOut, disconnect, grantAccess, resetPermissions,
+    signIn, signOut, disconnect, grantAccess, resetPermissions, createIn,
     sheetUrl: fileId.current ? Sheets.sheetUrl(fileId.current) : null,
     folderUrl: folderId.current ? Drive.folderUrl(folderId.current) : null,
     configured: !!(CONFIG.iosClientId || CONFIG.webClientId),

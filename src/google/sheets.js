@@ -63,10 +63,15 @@ const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 /* ---------------------------------------------------------- the workbook -- */
 
-async function findSheet(folderId) {
+/* Searched by name across everything this app can see — which under
+   drive.file is only ever files it made itself — rather than inside one
+   folder. Moving the spreadsheet somewhere else in Drive then costs nothing,
+   and a second copy can never appear beside a first one that was simply
+   somewhere unexpected. */
+async function findSheet() {
   const names = [TITLE, OLD_TITLE].filter(Boolean).map((n) => `name = '${esc(n)}'`).join(" or ");
   const params = new URLSearchParams({
-    q: `(${names}) and mimeType = '${SHEET_MIME}' and trashed = false and '${folderId}' in parents`,
+    q: `(${names}) and mimeType = '${SHEET_MIME}' and trashed = false`,
     spaces: "drive",
     fields: "files(id, name, modifiedTime)",
     pageSize: "5",
@@ -121,7 +126,12 @@ async function ensureTabs(id) {
   });
 }
 
-async function sheetId(folderId) {
+/* Returns the spreadsheet's id, or null when there is not one yet.
+
+   Deliberately does not create it: where someone's data lands is their
+   decision to make, not a side effect of opening the app. `createIn` is passed
+   only once they have said where. */
+async function sheetId({ createIn = null } = {}) {
   try {
     const cached = await AsyncStorage.getItem(SHEET_CACHE);
     if (cached) {
@@ -131,18 +141,29 @@ async function sheetId(folderId) {
     }
   } catch (_) { /* resolve properly below */ }
 
-  const found = await findSheet(folderId);
-  const id = found ? found.id : await createSheet(folderId);
+  const found = await findSheet();
+  if (found) {
+    try { await AsyncStorage.setItem(SHEET_CACHE, found.id); } catch (_) {}
+    return found.id;
+  }
+
+  if (!createIn) return null;
+
+  const folderId = await resolveFolder({ path: createIn });
+  const id = await createSheet(folderId);
   try { await AsyncStorage.setItem(SHEET_CACHE, id); } catch (_) {}
   return id;
 }
 
 /* ------------------------------------------------------------------ read -- */
 
-export async function loadDoc() {
-  const folderId = await resolveFolder();
-  const id = await sheetId(folderId);
+export async function loadDoc({ createIn = null } = {}) {
+  const id = await sheetId({ createIn });
+  if (!id) return { id: null, needsLocation: true };
+
   await ensureTabs(id);
+  const parents = await req(`${FILES}/${id}?fields=parents`).catch(() => ({}));
+  const folderId = (parents.parents || [])[0] || null;
 
   const ranges = ORDER.map((t) => `ranges=${q(`${t}!A1:ZZ100000`)}`).join("&");
   const res = await req(`${SHEETS}/${id}/values:batchGet?${ranges}&valueRenderOption=UNFORMATTED_VALUE`);

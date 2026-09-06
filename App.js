@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View,
+  ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, View,
 } from "react-native";
 
 import { useCloudDoc } from "./src/store/useCloudDoc";
@@ -43,8 +43,9 @@ export default function App() {
   const {
     user, doc, status, error, conflict, configured,
     update, syncNow, resolveConflict, signIn, signOut, disconnect,
-    grantAccess, resetPermissions, folderUrl, sheetUrl,
+    grantAccess, resetPermissions, createIn, folderUrl, sheetUrl,
   } = useCloudDoc();
+  const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
 
   // Opens on Insights: the first question on picking up the phone is usually
   // "where am I this week", not "let me log something".
@@ -122,6 +123,41 @@ export default function App() {
           Still stuck? Remove AhamMaxxing at myaccount.google.com/permissions and
           sign in again — that clears Google's memory of the refusal.
         </Text>
+      </Gate>
+    );
+  }
+
+  /* Where someone's data lands is their decision, and they should be told
+     which account it is going into — especially when people have more than one
+     Google account and the one they signed in with is not always the one they
+     expected. */
+  if (status === "choose-location") {
+    return (
+      <Gate title="Where should this live?">
+        <Text style={S.body}>
+          Your targets and everything you log will be kept in a spreadsheet in{" "}
+          <Text style={{ fontWeight: "700", color: C.ink }}>{user?.email}</Text>’s
+          Google Drive. Nobody else can see it, including whoever made this app.
+        </Text>
+
+        <Text style={[S.label, { marginTop: 18 }]}>Folder</Text>
+        <TextInput
+          style={S.input}
+          value={folder}
+          onChangeText={setFolder}
+          autoCapitalize="words"
+          placeholder="Apps / AhamMaxxing"
+        />
+        <Text style={[S.tiny, { marginTop: 6 }]}>
+          Separate folders with “/”. The app creates them — it cannot list folders
+          you already have, because it can only ever see files it made itself.
+          You can move the spreadsheet anywhere afterwards and it will still be found.
+        </Text>
+
+        {!!error && <Text style={S.error}>{error}</Text>}
+        <Btn primary label="Create it there"
+             onPress={() => createIn(folder.split("/").map((p) => p.trim()).filter(Boolean))} />
+        <Btn label="Sign in as someone else" onPress={signOut} />
       </Gate>
     );
   }

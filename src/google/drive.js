@@ -77,8 +77,9 @@ async function createFolder(name, parentId) {
    almost never changes. Moving or renaming the folder in Drive does not change
    its id, so the cache survives both — the only thing that invalidates it is
    the folder being deleted, which `resolveFolder` notices and recovers from. */
-export async function resolveFolder({ useCache = true } = {}) {
-  if (!CONFIG.folderPath || CONFIG.folderPath.length === 0) return "root";
+export async function resolveFolder({ useCache = true, path = null } = {}) {
+  const wanted = path || CONFIG.folderPath;
+  if (!wanted || wanted.length === 0) return "root";
 
   if (useCache) {
     try {
@@ -93,7 +94,7 @@ export async function resolveFolder({ useCache = true } = {}) {
   }
 
   let parent = "root";
-  for (const name of CONFIG.folderPath) {
+  for (const name of wanted) {
     const existing = await childFolder(name, parent);
     parent = existing ? existing.id : (await createFolder(name, parent)).id;
   }

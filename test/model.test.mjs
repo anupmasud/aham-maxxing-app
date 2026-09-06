@@ -9,8 +9,13 @@ import { fileURLToPath } from "node:url";
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(dir, "..", "src", "model", f), "utf8");
 
-// seed.js imports from targets.js; concatenating gives one self-contained module.
-const source = read("targets.js") + "\n" + read("seed.js").replace(/^import .*$/m, "");
+/* The model is split across three files that import each other. Concatenating
+   them with their imports and re-exports stripped gives one self-contained
+   module a data: URL can load, which keeps the suite dependency-free. */
+const strip = (f) => read(f)
+  .replace(/^import .*$/gm, "")
+  .replace(/^export \{[^}]*\}( from .*)?;$/gm, "");
+const source = ["targets.js", "templates.js", "seed.js"].map(strip).join("\n");
 const M = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
 
 let pass = 0, fail = 0;
@@ -285,6 +290,44 @@ console.log("\n14. a daily tick can only ever be one");
   thisWeek.forEach((k) => { wk = M.toggle(wk, stale, k); });
   const s = M.targetStats(stale, thisWeek, wk);
   eq("every day ticked is a full week", { done: s.done, n: s.n }, { done: 7, n: 7 });
+}
+
+console.log("\n15. starting sets");
+{
+  eq("four to choose from", M.TEMPLATES.map((t) => t.id), ["default", "niyamas", "franklin", "dinacharya"]);
+
+  M.TEMPLATES.forEach((t) => {
+    const doc = M.docFromTemplate(t.id);
+    eq(`${t.id}: categories match the template`, doc.categories.length, t.categories.length);
+    eq(`${t.id}: every category has suggestions`,
+       t.categories.every((c) => (M.SUGGESTIONS[c.id] || []).length > 0), true);
+    eq(`${t.id}: starter targets have a real category`,
+       doc.targets.every((x) => doc.categories.some((c) => c.id === x.catId)), true);
+    eq(`${t.id}: something to do on day one`, doc.targets.length > 0, true);
+    eq(`${t.id}: the set is recorded`, doc.template, t.id);
+  });
+
+  // Ids must not collide, or reorganising would merge two templates' categories.
+  const ids = M.TEMPLATES.flatMap((t) => t.categories.map((c) => c.id));
+  eq("category ids are unique across sets", ids.length, new Set(ids).size);
+}
+
+console.log("\n16. reorganising keeps everything");
+{
+  const doc = M.docFromTemplate("default");
+  const before = doc.targets.length;
+  const moved = M.addTemplateCategories(doc, "niyamas");
+  eq("both sets of categories present", moved.categories.length, 11 + 5);
+  eq("no target lost", moved.targets.length, before);
+  eq("running it twice adds nothing", M.addTemplateCategories(moved, "niyamas").categories.length, 16);
+
+  eq("strength lands in Tapas", M.guessCategory("niyamas", "Upper Body Strength Training"), "c_niy_tapas");
+  eq("journal lands in Svadhyaya", M.guessCategory("niyamas", "Journal"), "c_niy_svadhyaya");
+  eq("face mask lands in Saucha", M.guessCategory("niyamas", "Face and Eye Mask"), "c_niy_saucha");
+  eq("meditation lands in Surrender", M.guessCategory("niyamas", "Meditate 10 min"), "c_niy_ishvara");
+  eq("an unknown name still lands somewhere",
+     M.TEMPLATES[1].categories.some((c) => c.id === M.guessCategory("niyamas", "Zzzz")), true);
+  eq("the longest keyword wins", M.guessCategory("dinacharya", "Lights out by 11"), "c_din_evening");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

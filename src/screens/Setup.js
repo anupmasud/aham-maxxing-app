@@ -5,13 +5,17 @@ import { Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } 
 
 import { C, S, Btn, CatHeader, Chip, Confirm, Select } from "../ui/kit";
 import * as M from "../model/targets";
-import { CATEGORY_COLORS, SUGGESTIONS, UNITS } from "../model/seed";
+import {
+  CATEGORY_COLORS, SUGGESTIONS, TEMPLATES, UNITS, addTemplateCategories, templateById,
+} from "../model/seed";
+import { guessCategory } from "../model/templates";
 import { CONFIG } from "../config";
 
 export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut, disconnect }) {
   const [editTarget, setEditTarget] = useState(null);   // { target } | { catId }
   const [editCat, setEditCat] = useState(null);         // { cat } | {}
   const [confirming, setConfirming] = useState(null);   // { title, message, onConfirm }
+  const [reorganising, setReorganising] = useState(false);
 
   const cats = (doc.categories || []).slice().sort((a, b) => a.order - b.order);
   const targetsIn = (id) => (doc.targets || []).filter((t) => t.catId === id).sort((a, b) => a.order - b.order);
@@ -110,6 +114,16 @@ export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut,
         );
       })}
 
+      <View style={[S.card, S.cardPad]}>
+        <Text style={[S.h2, { marginBottom: 6 }]}>Starting set</Text>
+        <Text style={S.muted}>
+          Currently {templateById(doc.template).name.toLowerCase()}. Reorganising moves
+          the targets you already have into a different set of categories — nothing is
+          deleted and nothing you have logged is touched.
+        </Text>
+        <Btn label="Reorganise into another set" onPress={() => setReorganising(true)} />
+      </View>
+
       <Reminders doc={doc} update={update} />
 
       <View style={[S.card, S.cardPad]}>
@@ -142,7 +156,102 @@ export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut,
         onClose={() => setEditCat(null)} nextOrder={nextOrder}
       />
       <Confirm state={confirming} onClose={() => setConfirming(null)} />
+      {reorganising && (
+        <Reorganise doc={doc} update={update} onClose={() => setReorganising(false)} />
+      )}
     </ScrollView>
+  );
+}
+
+/* ------------------------------------------------------------ reorganise --
+   Moving an existing document into a different set of categories.
+
+   Every target is listed with a proposed home, guessed from its name, and
+   every guess is changeable before anything happens. Re-filing twenty targets
+   from a blank slate is tedious enough that people would rather not — a rough
+   answer they correct is far more likely to actually get used. */
+
+function Reorganise({ doc, update, onClose }) {
+  const [templateId, setTemplateId] = useState(
+    TEMPLATES.find((t) => t.id !== doc.template)?.id || "niyamas"
+  );
+  const [map, setMap] = useState(null);
+  const [seeded, setSeeded] = useState(null);
+
+  // Re-guess whenever a different set is chosen.
+  if (seeded !== templateId) {
+    setSeeded(templateId);
+    const next = {};
+    doc.targets.forEach((t) => { next[t.id] = guessCategory(templateId, t.name); });
+    setMap(next);
+  }
+  if (!map) return null;
+
+  const template = templateById(templateId);
+  const options = template.categories.map((c) => ({ value: c.id, label: `${c.emoji}  ${c.name}` }));
+
+  const apply = () => {
+    update((d) => {
+      const withCats = addTemplateCategories(d, templateId);
+      const targets = withCats.targets.map((t) => ({ ...t, catId: map[t.id] || t.catId }));
+
+      /* Old categories left holding nothing are dropped, so Setup does not end
+         up showing both sets side by side. Any that still hold a target stay —
+         losing a target to tidiness would be a poor trade. */
+      const keep = new Set(template.categories.map((c) => c.id));
+      const used = new Set(targets.map((t) => t.catId));
+      const categories = withCats.categories
+        .filter((c) => keep.has(c.id) || used.has(c.id))
+        .map((c, i) => ({ ...c, order: i }));
+
+      return { ...withCats, categories, targets };
+    });
+    onClose();
+  };
+
+  return (
+    <Sheet title="Reorganise" onClose={onClose}>
+      <Text style={S.muted}>
+        Pick a set, check where each target lands, then apply. Nothing you have
+        logged is affected — only which category a target sits in.
+      </Text>
+
+      <View style={{ marginTop: 12, marginBottom: 4 }}>
+        {TEMPLATES.map((t) => {
+          const on = templateId === t.id;
+          return (
+            <Pressable key={t.id} onPress={() => setTemplateId(t.id)}
+              style={({ pressed }) => [{
+                borderWidth: on ? 2 : 1, borderColor: on ? C.ink : C.rule,
+                backgroundColor: on ? C.sunk : C.card, borderRadius: 10,
+                padding: 11, marginBottom: 8, opacity: pressed ? 0.75 : 1,
+              }]}>
+              <Text style={{ fontSize: 14.5, fontWeight: "700", color: C.ink }}>{t.name}</Text>
+              <Text style={[S.tiny, { marginTop: 3 }]}>
+                {t.categories.map((c) => c.emoji).join(" ")}  ·  {t.categories.length} categories
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={[S.label, { marginTop: 10 }]}>Where each target goes</Text>
+      {doc.targets.map((t) => (
+        <View key={t.id} style={{ marginBottom: 10 }}>
+          <Text style={{ fontSize: 13.5, color: C.ink, marginBottom: 4 }} numberOfLines={1}>{t.name}</Text>
+          <Select
+            value={map[t.id]}
+            options={options}
+            onChange={(v) => setMap((m) => ({ ...m, [t.id]: v }))}
+          />
+        </View>
+      ))}
+
+      <View style={[S.row, { gap: 9, marginTop: 14 }]}>
+        <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
+        <Btn primary label="Apply" onPress={apply} style={{ flex: 1 }} />
+      </View>
+    </Sheet>
   );
 }
 

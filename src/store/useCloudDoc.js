@@ -51,7 +51,7 @@ export function useCloudDoc() {
 
   /* --------------------------------------------------------------- load -- */
 
-  const load = useCallback(async (u, createIn = null) => {
+  const load = useCallback(async (u, createIn = null, template = "default") => {
     if (!isAllowed(u.email)) { setStatus("not-allowed"); return; }
 
     // Paint from cache first so there is no blank screen while Drive answers.
@@ -77,7 +77,7 @@ export function useCloudDoc() {
          nothing to leave behind and it is the way back. */
       let doc = remote;
       if (empty) {
-        doc = (await Drive.readJsonIfExists(fid)) || cached || CONFIG.emptyDoc();
+        doc = (await Drive.readJsonIfExists(fid)) || cached || CONFIG.emptyDoc(template);
         const saved = await Sheets.saveDoc(id, doc, null, { force: true });
         baseTime.current = saved.modifiedTime;
       } else {
@@ -218,10 +218,10 @@ export function useCloudDoc() {
   const grantAccess = useCallback(() => signIn({ force: true }), [signIn]);
 
   /* Creates the spreadsheet in the folder they chose. */
-  const createIn = useCallback(async (path) => {
+  const createIn = useCallback(async (path, template) => {
     if (!user) return;
     setStatus("loading");
-    await load(user, path && path.length ? path : CONFIG.folderPath);
+    await load(user, path && path.length ? path : CONFIG.folderPath, template);
   }, [load, user]);
 
   /* The reliable last resort: hand the authorisation back, then start over.

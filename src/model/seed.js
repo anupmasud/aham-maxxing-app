@@ -1,144 +1,70 @@
 /* ==========================================================================
-   Starting categories, the targets you actually named, and a suggestion
-   library per category.
+   Building a starting document from a template.
+
+   A template supplies categories and a library of suggestions; the document it
+   builds carries a couple of obvious targets in one or two categories so the
+   first screen is not blank, and leaves the rest empty.
+
+   Those starter targets are drawn from the template's own suggestions rather
+   than written by hand, so nobody inherits somebody else's goals — a starting
+   set should be a floor to build on, not a stranger's routine.
 
    Categories seeded empty are not clutter: Today and Week only render
-   categories that have targets scheduled, so an untouched category is visible
-   in Setup alone, where its suggestions are one tap away.
+   categories that have targets scheduled, so an untouched one is visible in
+   Setup alone, where its suggestions are a tap away.
    ========================================================================== */
 
 import { ALL_DAYS, uid } from "./targets";
+import { SUGGESTIONS, TEMPLATES, templateById } from "./templates";
 
-export const SEED_CATEGORIES = [
-  { id: "c_move",    name: "Movement",          emoji: "🚶", color: "#3F7D5B" },
-  { id: "c_food",    name: "Nutrition",         emoji: "🥗", color: "#5E8C3F" },
-  { id: "c_limits",  name: "Limits",            emoji: "🍷", color: "#B4443A" },
-  { id: "c_sleep",   name: "Sleep & recovery",  emoji: "🌙", color: "#4A5F9E" },
-  { id: "c_mind",    name: "Mind",              emoji: "🧘", color: "#7A5EA8" },
-  { id: "c_health",  name: "Preventive health", emoji: "💊", color: "#2F6D8C" },
-  { id: "c_learn",   name: "Learning",          emoji: "📚", color: "#8C6D2F" },
-  { id: "c_connect", name: "Connection",        emoji: "💬", color: "#C1663F" },
-  { id: "c_play",    name: "Creative & play",   emoji: "🎧", color: "#9E4A7C" },
-  { id: "c_home",    name: "Home & admin",      emoji: "🧺", color: "#6B7280" },
-  { id: "c_digital", name: "Digital hygiene",   emoji: "📵", color: "#7E7264" },
-];
+export { SUGGESTIONS, TEMPLATES, templateById };
+export { UNITS, CATEGORY_COLORS } from "./templates";
 
-/* The targets you described, ready to use on first run. */
-export const SEED_TARGETS = [
-  { catId: "c_move",   name: "Walk",              kind: "amount", dir: "at_least", period: "day",  goal: 30,   unit: "min",   step: 5 },
-  /* Types let one target answer "how many sessions" and "which kind" at once.
-     Lymph drainage carries its own weekly minimum; the rest just need to add
-     up to the parent goal. The plan pencils types onto weekdays — a template
-     that repeats, not a diary, so it survives into next week untouched. */
-  { catId: "c_move",   name: "Strength training", kind: "tick",   dir: "at_least", period: "week", goal: 5,    unit: "",      step: 1,
-    types: [
-      { id: "ty_lymph", name: "Lymph drainage", goal: 5 },
-      { id: "ty_full",  name: "Full body",      goal: 1 },
-      { id: "ty_waist", name: "Waist",          goal: 1 },
-      { id: "ty_arms",  name: "Arms",           goal: 1 },
-    ],
-    plan: { 0: ["ty_lymph", "ty_arms"], 1: ["ty_lymph"], 2: ["ty_lymph", "ty_full"], 3: ["ty_lymph"], 4: ["ty_lymph", "ty_waist"] } },
-  { catId: "c_move",   name: "Steps",             kind: "amount", dir: "at_least", period: "day",  goal: 8000, unit: "steps", step: 500 },
-  { catId: "c_food",   name: "Water",             kind: "amount", dir: "at_least", period: "day",  goal: 3,    unit: "L",     step: 0.25 },
-  { catId: "c_limits", name: "Alcohol",           kind: "amount", dir: "at_most",  period: "week", goal: 6,    unit: "units", step: 1 },
-  { catId: "c_limits", name: "Meat",              kind: "amount", dir: "at_most",  period: "week", goal: 3,    unit: "meals", step: 1 },
-];
+/* Two is enough to show what a target looks like without presuming much. */
+const STARTERS_PER_CATEGORY = 2;
 
-export const SUGGESTIONS = {
-  c_move: [
-    { name: "Walk",               kind: "amount", dir: "at_least", period: "day",  goal: 30,   unit: "min",   step: 5 },
-    { name: "Steps",              kind: "amount", dir: "at_least", period: "day",  goal: 8000, unit: "steps", step: 500 },
-    { name: "Strength training",  kind: "tick",   dir: "at_least", period: "week", goal: 4,    unit: "",      step: 1 },
-    { name: "Stretch / mobility", kind: "amount", dir: "at_least", period: "day",  goal: 10,   unit: "min",   step: 5 },
-    { name: "Rest day",           kind: "tick",   dir: "at_least", period: "week", goal: 1,    unit: "",      step: 1 },
-    { name: "Cycle or swim",      kind: "tick",   dir: "at_least", period: "week", goal: 2,    unit: "",      step: 1 },
-  ],
-  c_food: [
-    { name: "Water",              kind: "amount", dir: "at_least", period: "day",  goal: 3,  unit: "L",        step: 0.25 },
-    { name: "Portions of veg",    kind: "amount", dir: "at_least", period: "day",  goal: 5,  unit: "portions", step: 1 },
-    { name: "Protein",            kind: "amount", dir: "at_least", period: "day",  goal: 70, unit: "g",        step: 10 },
-    { name: "Home-cooked dinner", kind: "tick",   dir: "at_least", period: "week", goal: 5,  unit: "",         step: 1 },
-    { name: "Breakfast",          kind: "tick",   dir: "at_least", period: "day",  goal: 1,  unit: "",         step: 1 },
-  ],
-  c_limits: [
-    { name: "Alcohol",     kind: "amount", dir: "at_most", period: "week", goal: 6, unit: "units",  step: 1 },
-    { name: "Meat",        kind: "amount", dir: "at_most", period: "week", goal: 3, unit: "meals",  step: 1 },
-    { name: "Takeaway",    kind: "amount", dir: "at_most", period: "week", goal: 1, unit: "meals",  step: 1 },
-    { name: "Caffeine",    kind: "amount", dir: "at_most", period: "day",  goal: 2, unit: "cups",   step: 1 },
-    { name: "Dessert",     kind: "amount", dir: "at_most", period: "week", goal: 2, unit: "times",  step: 1 },
-    { name: "Added sugar", kind: "amount", dir: "at_most", period: "week", goal: 3, unit: "treats", step: 1 },
-  ],
-  c_sleep: [
-    { name: "Lights out by 11",      kind: "tick",   dir: "at_least", period: "day", goal: 1,   unit: "",  step: 1 },
-    { name: "Hours slept",           kind: "amount", dir: "at_least", period: "day", goal: 7.5, unit: "h", step: 0.5 },
-    { name: "No screens before bed", kind: "tick",   dir: "at_least", period: "day", goal: 1,   unit: "",  step: 1 },
-  ],
-  c_mind: [
-    { name: "Meditate",          kind: "amount", dir: "at_least", period: "day", goal: 10, unit: "min", step: 5 },
-    { name: "Journal",           kind: "tick",   dir: "at_least", period: "day", goal: 1,  unit: "",    step: 1 },
-    { name: "Daylight outdoors", kind: "amount", dir: "at_least", period: "day", goal: 20, unit: "min", step: 10 },
-    { name: "Three good things", kind: "tick",   dir: "at_least", period: "day", goal: 1,  unit: "",    step: 1 },
-  ],
-  c_health: [
-    { name: "Vitamins",         kind: "tick", dir: "at_least", period: "day",  goal: 1, unit: "", step: 1 },
-    { name: "Physio exercises", kind: "tick", dir: "at_least", period: "week", goal: 3, unit: "", step: 1 },
-    { name: "Floss",            kind: "tick", dir: "at_least", period: "day",  goal: 1, unit: "", step: 1 },
-    { name: "Skincare",         kind: "tick", dir: "at_least", period: "day",  goal: 1, unit: "", step: 1 },
-  ],
-  c_learn: [
-    { name: "Read",              kind: "amount", dir: "at_least", period: "day",  goal: 20, unit: "pages", step: 5 },
-    { name: "Language practice", kind: "tick",   dir: "at_least", period: "day",  goal: 1,  unit: "",      step: 1 },
-    { name: "Course or project", kind: "amount", dir: "at_least", period: "week", goal: 3,  unit: "h",     step: 0.5 },
-  ],
-  c_connect: [
-    { name: "Call family",     kind: "tick", dir: "at_least", period: "week", goal: 2, unit: "", step: 1 },
-    { name: "See a friend",    kind: "tick", dir: "at_least", period: "week", goal: 1, unit: "", step: 1 },
-    { name: "Message someone", kind: "tick", dir: "at_least", period: "day",  goal: 1, unit: "", step: 1 },
-  ],
-  c_play: [
-    { name: "Listen to a full record", kind: "tick",   dir: "at_least", period: "week", goal: 2,  unit: "",    step: 1 },
-    { name: "Instrument practice",     kind: "amount", dir: "at_least", period: "day",  goal: 20, unit: "min", step: 10 },
-    { name: "Draw or write",           kind: "tick",   dir: "at_least", period: "week", goal: 2,  unit: "",    step: 1 },
-  ],
-  c_home: [
-    { name: "Tidy 15 minutes", kind: "tick", dir: "at_least", period: "day",  goal: 1, unit: "", step: 1 },
-    { name: "Meal prep",       kind: "tick", dir: "at_least", period: "week", goal: 1, unit: "", step: 1 },
-    { name: "Review finances", kind: "tick", dir: "at_least", period: "week", goal: 1, unit: "", step: 1 },
-  ],
-  c_digital: [
-    { name: "Social media",         kind: "amount", dir: "at_most",  period: "day", goal: 30, unit: "min", step: 15 },
-    { name: "No phone at meals",    kind: "tick",   dir: "at_least", period: "day", goal: 1,  unit: "",    step: 1 },
-    { name: "Phone out of bedroom", kind: "tick",   dir: "at_least", period: "day", goal: 1,  unit: "",    step: 1 },
-  ],
-};
+export function docFromTemplate(templateId) {
+  const template = templateById(templateId);
+  const categories = template.categories.map((c, i) => ({ ...c, order: i }));
 
-export const UNITS = ["", "min", "h", "steps", "L", "ml", "g", "km", "pages", "units", "meals", "cups", "portions", "treats", "times"];
+  const targets = [];
+  (template.starters || []).forEach((catId) => {
+    (SUGGESTIONS[catId] || []).slice(0, STARTERS_PER_CATEGORY).forEach((s) => {
+      targets.push({
+        ...s, id: uid("t_"), catId, order: targets.length,
+        archived: false, days: [...ALL_DAYS], types: [], plan: {},
+      });
+    });
+  });
 
-export const CATEGORY_COLORS = [
-  "#3F7D5B", "#5E8C3F", "#B4443A", "#4A5F9E", "#7A5EA8",
-  "#2F6D8C", "#8C6D2F", "#C1663F", "#9E4A7C", "#6B7280",
-];
-
-export function seededDoc() {
   return {
     version: 1,
+    template: template.id,
     createdAt: new Date().toISOString(),
-    categories: SEED_CATEGORIES.map((c, i) => ({ ...c, order: i })),
-    targets: SEED_TARGETS.map((t, i) => ({
-      ...t, id: uid("t_"), order: i, archived: false, days: [...ALL_DAYS],
-    })),
+    categories,
+    targets,
     log: {},
     reminders: { enabled: false, hour: 20, minute: 0 },
   };
 }
 
-export function emptyDoc() {
-  return {
-    version: 1,
-    createdAt: new Date().toISOString(),
-    categories: [],
-    targets: [],
-    log: {},
-    reminders: { enabled: false, hour: 20, minute: 0 },
-  };
+/* Adds a template's categories to a document that already exists, leaving
+   every target and everything logged exactly where it is. Categories already
+   present are not duplicated, so this is safe to run twice. */
+export function addTemplateCategories(doc, templateId) {
+  const template = templateById(templateId);
+  const have = new Set(doc.categories.map((c) => c.id));
+  const next = doc.categories.slice();
+  template.categories.forEach((c) => {
+    if (!have.has(c.id)) next.push({ ...c, order: next.length });
+  });
+  return { ...doc, template: template.id, categories: next };
 }
+
+export const seededDoc = () => docFromTemplate("default");
+export const emptyDoc = () => ({
+  version: 1,
+  createdAt: new Date().toISOString(),
+  categories: [], targets: [], log: {},
+  reminders: { enabled: false, hour: 20, minute: 0 },
+});

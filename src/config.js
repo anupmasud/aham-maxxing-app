@@ -2,7 +2,7 @@
    Everything you need to change to make this your own.
    ========================================================================== */
 
-import { seededDoc } from "./model/seed";
+import { docFromTemplate } from "./model/seed";
 
 export const CONFIG = {
   /* ---- Google OAuth client IDs -------------------------------------------
@@ -38,9 +38,9 @@ export const CONFIG = {
      the spreadsheet on first run; nothing is written to it any more. */
   fileName: "ahammaxxing-data.json",
 
-  /* The document a brand-new person starts with: eleven categories and the
-     handful of targets described in the brief. */
-  emptyDoc: seededDoc,
+  /* The document a brand-new person starts with, built from whichever starting
+     set they chose. */
+  emptyDoc: docFromTemplate,
 
   /* Optional allowlist. A list checked on the device is a signpost, not a
      lock — it ships to the phone and can be patched out. It is safe only

@@ -7,12 +7,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
 } from "react-native";
 
 import { useCloudDoc } from "./src/store/useCloudDoc";
 import { CONFIG } from "./src/config";
 import { C, S, Btn } from "./src/ui/kit";
+import { TEMPLATES } from "./src/model/seed";
 import * as M from "./src/model/targets";
 import * as Reminders from "./src/reminders";
 
@@ -46,6 +47,7 @@ export default function App() {
     grantAccess, resetPermissions, createIn, folderUrl, sheetUrl,
   } = useCloudDoc();
   const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
+  const [template, setTemplate] = useState("default");
 
   // Opens on Insights: the first question on picking up the phone is usually
   // "where am I this week", not "let me log something".
@@ -133,9 +135,34 @@ export default function App() {
      expected. */
   if (status === "choose-location") {
     return (
-      <Gate title="Where should this live?">
+      <Gate title="Choose a starting set" scroll>
         <Text style={S.body}>
-          Your targets and everything you log will be kept in a spreadsheet in{" "}
+          Categories to begin with. Every one of them can be renamed, removed or
+          added to afterwards — this only decides what is there on day one.
+        </Text>
+
+        <View style={{ marginTop: 14 }}>
+          {TEMPLATES.map((t) => {
+            const on = template === t.id;
+            return (
+              <Pressable key={t.id} onPress={() => setTemplate(t.id)}
+                style={({ pressed }) => [{
+                  borderWidth: on ? 2 : 1, borderColor: on ? C.ink : C.rule,
+                  backgroundColor: on ? C.sunk : C.card, borderRadius: 12,
+                  padding: 14, marginBottom: 10, opacity: pressed ? 0.75 : 1,
+                }]}>
+                <Text style={{ fontSize: 15.5, fontWeight: "700", color: C.ink }}>{t.name}</Text>
+                <Text style={[S.muted, { marginTop: 4 }]}>{t.blurb}</Text>
+                <Text style={[S.tiny, { marginTop: 6 }]}>
+                  {t.categories.map((c) => c.emoji).join(" ")}  ·  {t.categories.length} categories
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={[S.body, { marginTop: 6 }]}>
+          Everything you log is kept in a spreadsheet in{" "}
           <Text style={{ fontWeight: "700", color: C.ink }}>{user?.email}</Text>’s
           Google Drive. Nobody else can see it, including whoever made this app.
         </Text>
@@ -156,7 +183,7 @@ export default function App() {
 
         {!!error && <Text style={S.error}>{error}</Text>}
         <Btn primary label="Create it there"
-             onPress={() => createIn(folder.split("/").map((p) => p.trim()).filter(Boolean))} />
+             onPress={() => createIn(folder.split("/").map((p) => p.trim()).filter(Boolean), template)} />
         <Btn label="Sign in as someone else" onPress={signOut} />
       </Gate>
     );
@@ -261,16 +288,21 @@ export default function App() {
 
 /* ------------------------------------------------------------------ bits -- */
 
-function Gate({ title, tagline, children }) {
+function Gate({ title, tagline, children, scroll }) {
+  const Inner = scroll ? ScrollView : View;
   return (
     <SafeAreaView style={S.screen}>
       <StatusBar barStyle="dark-content" />
-      <View style={[S.pad, { flex: 1, justifyContent: "center" }]}>
+      <Inner
+        style={scroll ? S.screen : undefined}
+        contentContainerStyle={scroll ? [S.pad, { paddingVertical: 26 }] : undefined}
+        {...(scroll ? {} : { style: [S.pad, { flex: 1, justifyContent: "center" }] })}
+      >
         <Text style={[S.h1, { fontSize: 32 }]}>{title}</Text>
         {!!tagline && <Text style={[S.muted, { marginTop: 4, marginBottom: 16 }]}>{tagline}</Text>}
         <View style={{ height: 10 }} />
         {children}
-      </View>
+      </Inner>
     </SafeAreaView>
   );
 }

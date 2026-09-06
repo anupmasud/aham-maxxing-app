@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "AhamMaxxing",
+    "slug": "aham-maxxing-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anupmasud.ahammaxxing"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.anupmasud.ahammaxxing"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "AhamMaxxing",
+      "shortName": "AhamMaxxing",
+      "themeColor": "#FBF7F0",
+      "backgroundColor": "#FBF7F0",
+      "display": "standalone",
+      "description": "Set targets by category, check them off daily, see how the week went."
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.432206356046-0ujmkctdc5rb3hobfp0chjvt5kgt4849"
+        }
+      ]
+    ],
+    "scheme": "ahammaxxing",
+    "backgroundColor": "#FBF7F0"
+  }
+}

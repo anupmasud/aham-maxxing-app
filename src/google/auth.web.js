@@ -89,10 +89,27 @@ export async function configureGoogle() {
 
 /* Always call this from a user gesture: Google's token client opens a popup,
    and browsers block popups that no click asked for. */
-function requestToken({ interactive }) {
+function requestToken({ interactive, force = false }) {
   return new Promise((resolve, reject) => {
     tokenClient.callback = (resp) => {
       if (resp.error) return reject(new Error(resp.error_description || resp.error));
+
+      /* Google's granular consent lets someone approve signing in while
+         unticking Drive. The token comes back looking perfectly successful and
+         every write then fails with a 403 — and because Google remembers the
+         refusal, signing out and back in never asks again. Checking what was
+         actually granted is the only way to notice. */
+      const granted = String(resp.scope || "").split(/\s+/);
+      const missing = CONFIG.scopes.filter((s) => !granted.includes(s));
+      if (missing.length) {
+        const err = new Error(
+          "AhamMaxxing needs permission to create and edit its own spreadsheet in your Drive. " +
+          "Without it there is nowhere to save."
+        );
+        err.missingScope = true;
+        return reject(err);
+      }
+
       token = resp.access_token;
       expiry = Date.now() + (resp.expires_in ? resp.expires_in * 1000 : 3500 * 1000);
       storeToken();
@@ -100,7 +117,9 @@ function requestToken({ interactive }) {
     };
     tokenClient.error_callback = (err) => reject(new Error((err && err.type) || "Sign-in failed"));
     try {
-      tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" });
+      // "consent" forces the permission screen even when Google has already
+      // made up its mind — which is what gets a declined scope back.
+      tokenClient.requestAccessToken({ prompt: force || interactive ? "consent" : "" });
     } catch (e) { reject(e); }
   });
 }
@@ -134,10 +153,10 @@ export async function restoreSession() {
   }
 }
 
-export async function signIn() {
+export async function signIn({ force = false } = {}) {
   await configureGoogle();
   try {
-    await requestToken({ interactive: true });
+    await requestToken({ interactive: true, force });
   } catch (e) {
     // Closing the Google popup is a choice, not a failure worth shouting about.
     if (/popup_closed|access_denied|cancel/i.test(e.message)) return { cancelled: true, user: null };

@@ -42,7 +42,8 @@ const STATUS = {
 export default function App() {
   const {
     user, doc, status, error, conflict, configured,
-    update, syncNow, resolveConflict, signIn, signOut, disconnect, folderUrl, sheetUrl,
+    update, syncNow, resolveConflict, signIn, signOut, disconnect,
+    grantAccess, resetPermissions, folderUrl, sheetUrl,
   } = useCloudDoc();
 
   // Opens on Insights: the first question on picking up the phone is usually
@@ -89,6 +90,32 @@ export default function App() {
           ? <ActivityIndicator style={{ marginTop: 22 }} />
           : <Btn primary label="Sign in with Google" onPress={signIn} />}
         {!!error && <Text style={S.error}>{error}</Text>}
+      </Gate>
+    );
+  }
+
+  /* Signing in while declining Drive leaves the app with an account and
+     nowhere to save. Google then remembers the refusal and stops offering, so
+     signing out and back in changes nothing — which is a genuinely stuck place
+     to be without a button that forces the question again. */
+  if (status === "needs-permission") {
+    return (
+      <Gate title="One permission missing">
+        <Text style={S.body}>
+          {user?.email ? `${user.email} is signed in, but ` : ""}AhamMaxxing has not
+          been allowed to create its spreadsheet. There is nowhere to save without it.
+        </Text>
+        <Text style={[S.muted, { marginTop: 10 }]}>
+          It only ever touches files it made itself — it cannot see anything else
+          in your Drive.
+        </Text>
+        {!!error && <Text style={S.error}>{error}</Text>}
+        <Btn primary label="Allow Drive access" onPress={grantAccess} />
+        <Btn label="Start the permission over" onPress={resetPermissions} />
+        <Text style={[S.tiny, { marginTop: 12 }]}>
+          Still stuck? Remove AhamMaxxing at myaccount.google.com/permissions and
+          sign in again — that clears Google's memory of the refusal.
+        </Text>
       </Gate>
     );
   }

@@ -86,7 +86,11 @@ export function useCloudDoc() {
       // With a cached copy in hand this is a soft failure: keep working
       // offline and let the next save try again.
       setError(e.message);
-      setStatus(e.needsSignIn ? "expired" : cached ? "offline" : "error");
+      setStatus(
+        e.needsScope || e.missingScope ? "needs-permission"
+        : e.needsSignIn ? "expired"
+        : cached ? "offline" : "error"
+      );
     }
   }, [cache, readCache]);
 
@@ -128,7 +132,7 @@ export function useCloudDoc() {
         return;
       }
       setError(e.message);
-      setStatus(e.needsSignIn ? "expired" : "offline");
+      setStatus(e.needsScope ? "needs-permission" : e.needsSignIn ? "expired" : "offline");
     }
   }, [user]);
 
@@ -186,18 +190,39 @@ export function useCloudDoc() {
 
   /* ------------------------------------------------------------ session -- */
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (opts = {}) => {
     setError("");
     try {
-      const { cancelled, user: u } = await Auth.signIn();
+      const { cancelled, user: u } = await Auth.signIn(opts);
       if (cancelled || !u) return;
       setUser(u);
       await load(u);
     } catch (e) {
       setError(e.message);
-      setStatus("error");
+      // Approving sign-in but declining Drive is a specific, recoverable state,
+      // not a generic failure — it deserves its own screen and its own way out.
+      setStatus(e.missingScope ? "needs-permission" : "error");
     }
   }, [load]);
+
+  /* Asks again with the consent screen forced. Google remembers a refusal and
+     stops offering, so an ordinary sign-in will not get the scope back. */
+  const grantAccess = useCallback(() => signIn({ force: true }), [signIn]);
+
+  /* The reliable last resort: hand the authorisation back, then start over.
+     Nothing is deleted — the spreadsheet stays in Drive either way. */
+  const resetPermissions = useCallback(async () => {
+    setError("");
+    try {
+      await Auth.revokeAccess();
+      setUser(null);
+      setDoc(null);
+      latest.current = null;
+      setStatus("signed-out");
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
 
   const signOut = useCallback(async () => {
     clearTimeout(timer.current);
@@ -228,7 +253,7 @@ export function useCloudDoc() {
   return {
     user, doc, status, error, conflict,
     update, syncNow, resolveConflict,
-    signIn, signOut, disconnect,
+    signIn, signOut, disconnect, grantAccess, resetPermissions,
     sheetUrl: fileId.current ? Sheets.sheetUrl(fileId.current) : null,
     folderUrl: folderId.current ? Drive.folderUrl(folderId.current) : null,
     configured: !!(CONFIG.iosClientId || CONFIG.webClientId),

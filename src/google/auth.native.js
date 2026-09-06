@@ -45,12 +45,32 @@ export async function restoreSession() {
   }
 }
 
-export async function signIn() {
+export async function signIn({ force = false } = {}) {
   configureGoogle();
   if (Platform_isAndroid()) await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-  const res = await GoogleSignin.signIn();
+  let res = await GoogleSignin.signIn();
   if (res.type === "cancelled") return { cancelled: true, user: null };
+
+  /* Someone can approve signing in while declining Drive, which leaves the app
+     signed in and unable to save a thing. addScopes asks again for whatever is
+     missing rather than leaving them stuck. */
+  const granted = (res.data && res.data.scopes) || [];
+  const missing = CONFIG.scopes.filter((s) => !granted.includes(s));
+  if (missing.length || force) {
+    const again = await GoogleSignin.addScopes({ scopes: CONFIG.scopes });
+    if (again && again.type === "success") res = again;
+    const now = (res.data && res.data.scopes) || [];
+    if (CONFIG.scopes.some((s) => !now.includes(s))) {
+      const err = new Error(
+        "AhamMaxxing needs permission to create and edit its own spreadsheet in your Drive. " +
+        "Without it there is nowhere to save."
+      );
+      err.missingScope = true;
+      throw err;
+    }
+  }
+
   return { cancelled: false, user: userFrom(res) };
 }
 

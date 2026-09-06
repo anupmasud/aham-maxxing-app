@@ -338,5 +338,37 @@ console.log("\n16. reorganising keeps everything");
   eq("the longest keyword wins", M.guessCategory("dinacharya", "Lights out by 11"), "c_din_evening");
 }
 
+console.log("\n17. suggestions already taken are not offered again");
+{
+  const doc = M.docFromTemplate("default");
+  const before = M.suggestionsFor(doc, "c_play").map((s) => s.name);
+  eq("offered before it is added", before.includes("Listen to a full record"), true);
+
+  // Added under a different category — it is still a target you have.
+  doc.targets.push({
+    id: "t_rec", catId: "c_connect", name: "Listen to a full record",
+    kind: "tick", dir: "at_least", period: "week", goal: 2, days: M.ALL_DAYS,
+  });
+  eq("not offered anywhere once you have it",
+     M.suggestionsFor(doc, "c_play").map((s) => s.name).includes("Listen to a full record"), false);
+  eq("nor in the category it was suggested from",
+     M.suggestionsFor(doc, "c_connect").map((s) => s.name).includes("Listen to a full record"), false);
+
+  // Case, spacing and punctuation should not create a duplicate.
+  doc.targets.push({ id: "t_x", catId: "c_move", name: "  tidy 15 MINUTES!  ", kind: "tick" });
+  eq("matched despite case and punctuation",
+     M.suggestionsFor(doc, "c_home").map((s) => s.name).includes("Tidy 15 minutes"), false);
+
+  // But a merely similar name must not hide a suggestion. Checked on a
+  // document with no starter targets, since "Walk" is seeded by default and
+  // would be hidden for the honest reason.
+  const bare = { ...M.docFromTemplate("default"), targets: [
+    { id: "t_dog", catId: "c_move", name: "Walking the dog", kind: "tick" },
+  ] };
+  eq("a similar-but-different name is still offered",
+     M.suggestionsFor(bare, "c_move").map((s) => s.name).includes("Walk"), true);
+  eq("everything else survives", M.suggestionsFor(doc, "c_sleep").length, 3);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

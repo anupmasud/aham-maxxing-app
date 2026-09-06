@@ -6,7 +6,7 @@ import { Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } 
 import { C, S, Btn, CatHeader, Chip, Confirm, Select } from "../ui/kit";
 import * as M from "../model/targets";
 import {
-  CATEGORY_COLORS, SUGGESTIONS, TEMPLATES, UNITS, addTemplateCategories, templateById,
+  CATEGORY_COLORS, TEMPLATES, UNITS, addTemplateCategories, suggestionsFor, templateById,
 } from "../model/seed";
 import { guessCategory } from "../model/templates";
 import { applyImport, readImport } from "../model/csv";
@@ -46,8 +46,7 @@ export default function Setup({
 
       {cats.map((cat) => {
         const ts = targetsIn(cat.id);
-        const used = new Set(ts.map((t) => t.name.toLowerCase()));
-        const chips = (SUGGESTIONS[cat.id] || []).filter((s) => !used.has(s.name.toLowerCase()));
+        const chips = suggestionsFor(doc, cat.id);
         return (
           <View key={cat.id} style={S.card}>
             <CatHeader cat={cat} right={

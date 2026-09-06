@@ -322,9 +322,42 @@ export function typeProgress(t, type, dayKey, log) {
    which is what "a plan for the week" usually means, and it survives into next
    week without being retyped. */
 
+/* One weekday's entry in the plan, in a single shape whatever was stored.
+
+   A target with types plans which kinds fall on which day, so its entry is a
+   list of type ids. A target without types has nothing to choose between — the
+   plan is simply "I mean to do this on Tuesday" — so its entry is `true`.
+   Reading both through here keeps every caller from having to know which. */
+export function planEntry(t, dowIndex) {
+  const v = (t.plan || {})[dowIndex];
+  if (v === true) return { planned: true, types: [] };
+  if (Array.isArray(v) && v.length) return { planned: true, types: v };
+  return { planned: false, types: [] };
+}
+
+/* The type ids planned for a day. Empty for a target without types, which is
+   why isPlannedOn exists alongside it. */
 export function plannedOn(t, dayKey) {
-  const plan = t.plan || {};
-  return plan[dow(parseKey(dayKey))] || [];
+  return planEntry(t, dow(parseKey(dayKey))).types;
+}
+
+/* Whether the plan asked for this target at all on this day. */
+export function isPlannedOn(t, dayKey) {
+  return planEntry(t, dow(parseKey(dayKey))).planned;
+}
+
+/* The weekdays a target is planned for, for showing and for editing. */
+export function plannedDays(t) {
+  return ALL_DAYS.filter((d) => planEntry(t, d).planned);
+}
+
+/* Sets or clears a whole-target plan for one weekday. Only meaningful without
+   types; a typed target's plan is per type. */
+export function setPlannedDay(t, dowIndex, on) {
+  const plan = { ...(t.plan || {}) };
+  if (on) plan[dowIndex] = true;
+  else delete plan[dowIndex];
+  return { ...t, plan };
 }
 
 /* What the plan expected against what actually happened. A day still to come
@@ -332,9 +365,24 @@ export function plannedOn(t, dayKey) {
 export function planStatus(t, dayKey, log) {
   const planned = plannedOn(t, dayKey);
   const done = typesOn(log, t.id, dayKey);
+
+  // Without types there is nothing to list, so the question is simply whether
+  // the day was planned and whether anything was logged against it.
+  if (!hasTypes(t)) {
+    const asked = isPlannedOn(t, dayKey);
+    const did = valueOn(log, t.id, dayKey) > 0;
+    return {
+      planned: [], done: [], kept: [],
+      askedFor: asked,
+      missed: asked && !did && !isFuture(dayKey) ? ["*"] : [],
+      extra: [],
+    };
+  }
+
   return {
     planned,
     done,
+    askedFor: planned.length > 0,
     kept: planned.filter((id) => done.includes(id)),
     missed: isFuture(dayKey) ? [] : planned.filter((id) => !done.includes(id)),
     extra: done.filter((id) => !planned.includes(id)),
@@ -344,7 +392,7 @@ export function planStatus(t, dayKey, log) {
 /* Does this target have any plan at all? Drives whether the week view bothers
    showing ghosts for what was intended. */
 export const hasPlan = (t) =>
-  !!t.plan && Object.values(t.plan).some((list) => Array.isArray(list) && list.length);
+  !!t.plan && Object.values(t.plan).some((v) => v === true || (Array.isArray(v) && v.length));
 
 export const typeName = (t, id) => {
   const found = (t.types || []).find((x) => x.id === id);

@@ -57,7 +57,8 @@ console.log("\n1. what the tabs look like");
   eq("targets carry the category by name", tabs.Targets[1][1], "Movement");
   eq("restricted days written as names", tabs.Targets[3][9], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][9], "All");
-  eq("archived flagged", tabs.Targets[3][11], "TRUE");
+  eq("archived flagged", tabs.Targets[3][12], "TRUE");
+  eq("an unplanned target leaves the column blank", tabs.Targets[1][10], "");
   eq("a type row carries its weekly minimum", tabs.Types[1].slice(0, 5),
      ["t_str", "Strength training", "ty_lymph", "Lymph drainage", 5]);
   eq("the plan is days beside the type", tabs.Types[1].slice(5), ["TRUE", "", "TRUE", "", "", "", ""]);
@@ -144,6 +145,34 @@ console.log("\n3. it survives the things a person does to a spreadsheet");
   const floss = r4.targets.find((t) => t.id === "t_floss");
   eq("numeric days parsed", floss.days, [0, 2, 4]);
   eq("yes counts as archived", floss.archived, true);
+}
+
+console.log("\n4b. a plan for a target without types");
+{
+  const planned = {
+    ...doc,
+    targets: doc.targets.map((t) =>
+      t.id === "t_water" ? { ...t, plan: { 0: true, 2: true, 4: true } } : t),
+  };
+  const tabs = M.docToSheets(planned);
+  const row = tabs.Targets.find((r) => r[0] === "t_water");
+  eq("written as weekday names", row[10], "Mon, Wed, Fri");
+
+  const back = M.sheetsToDoc(tabs, planned);
+  eq("read back", back.targets.find((t) => t.id === "t_water").plan, { 0: true, 2: true, 4: true });
+
+  // A typed target keeps its per-type plan and does not gain a whole-target one.
+  eq("typed target's plan untouched",
+     back.targets.find((t) => t.id === "t_str").plan, { 0: ["ty_lymph", "ty_arms"], 2: ["ty_lymph"] });
+
+  // Blank must mean "nothing planned", not "every day".
+  eq("blank is not every day", back.targets.find((t) => t.id === "t_floss").plan, {});
+
+  // Hand-editable, like everything else.
+  const edited = M.docToSheets(planned);
+  edited.Targets = edited.Targets.map((r) => (r[0] === "t_water" ? [...r.slice(0, 10), "Tue", ...r.slice(11)] : r));
+  eq("a hand-edited plan takes effect",
+     M.sheetsToDoc(edited, planned).targets.find((t) => t.id === "t_water").plan, { 1: true });
 }
 
 console.log("\n4. a kind renamed in the sheet keeps its history");

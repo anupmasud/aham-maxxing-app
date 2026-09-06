@@ -45,7 +45,7 @@ export default function Week({ doc, update, day }) {
             {fmtShort(M.parseKey(keys[0]))} – {fmtShort(M.parseKey(keys[6]))}
           </Text>
         </View>
-        <Arrow glyph="›" disabled={offset >= 0}
+        <Arrow glyph="›"
                onPress={() => setMonday(M.keyOf(M.addDays(M.parseKey(monday), 7)))} />
       </View>
 
@@ -126,6 +126,27 @@ function Cell({ t, dayKey, log, setLog, open }) {
     return (
       <View style={{ flex: 1, alignItems: "center", paddingVertical: 2 }}>
         <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: C.ruleSoft, opacity: 0.5 }} />
+      </View>
+    );
+  }
+
+  /* A day still to come shows the plan and takes no input: ticking it would
+     add a session to the week's total that has not happened. */
+  if (future) {
+    const planned = M.isPlannedOn(t, dayKey);
+    return (
+      <View style={{ flex: 1, alignItems: "center", paddingVertical: 2 }}>
+        <View style={{
+          width: 30, height: 30, borderRadius: 8, borderWidth: 1,
+          borderStyle: planned ? "dashed" : "solid",
+          borderColor: planned ? C.ink2 : C.ruleSoft,
+          backgroundColor: planned ? C.sunk : C.card,
+          alignItems: "center", justifyContent: "center", opacity: planned ? 0.9 : 0.4,
+        }}>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: C.ink3 }}>
+            {planned ? "·" : ""}
+          </Text>
+        </View>
       </View>
     );
   }

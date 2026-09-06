@@ -48,6 +48,16 @@ export function daysOut(days) {
   if (!days || days.length === 0 || days.length === 7) return "All";
   return days.slice().sort((a, b) => a - b).map((d) => DOW[d]).join(", ");
 }
+/* An empty cell means nothing is planned, which is different from "every day"
+   — so this cannot go through daysIn, whose empty case is All. */
+function planIn(v) {
+  const t = norm(v);
+  if (!t) return {};
+  const plan = {};
+  daysIn(t).forEach((d) => { plan[d] = true; });
+  return plan;
+}
+
 export function daysIn(v) {
   const t = norm(v);
   if (!t || ["all", "everyday", "every day"].includes(lower(t))) return [...ALL_DAYS];
@@ -66,7 +76,7 @@ export function daysIn(v) {
 
 export const CAT_HEAD = ["id", "name", "emoji", "colour", "order"];
 export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period",
-                         "goal", "unit", "step", "days", "order", "archived"];
+                         "goal", "unit", "step", "days", "planned", "order", "archived"];
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
 export const SETTINGS_HEAD = ["setting", "value"];
 
@@ -83,13 +93,28 @@ export function targetsOut(doc) {
   return [TGT_HEAD, ...doc.targets.map((t) => [
     t.id, catName(t.catId), t.name,
     KIND_OUT[t.kind] || "tick", DIR_OUT[t.dir] || "at least", t.period,
-    t.goal, t.unit || "", t.step, daysOut(t.days), t.order, t.archived ? "TRUE" : "FALSE",
+    t.goal, t.unit || "", t.step, daysOut(t.days),
+    // A typed target's plan lives per type in the Types tab; this column is for
+    // the rest, where the plan is only ever "which days I mean to do this".
+    (t.types || []).length ? "" : plannedOut(t),
+    t.order, t.archived ? "TRUE" : "FALSE",
   ])];
 }
 
 /* One row per type, carrying both its weekly minimum and the days the plan
    asked for it — the plan is only ever "which kinds on which weekday", so it
    belongs beside the kind rather than in a tab of its own. */
+/* Weekdays a target is planned for. "None" rather than blank when nothing is
+   planned, so an empty cell is never mistaken for a column somebody deleted. */
+function plannedOut(t) {
+  const days = ALL_DAYS.filter((d) => {
+    const v = (t.plan || {})[d];
+    return v === true || (Array.isArray(v) && v.length);
+  });
+  if (!days.length) return "";
+  return days.length === 7 ? "All" : days.map((d) => DOW[d]).join(", ");
+}
+
 export function typesOut(doc) {
   const rows = [TYPE_HEAD];
   doc.targets.forEach((t) => {
@@ -194,10 +219,10 @@ export function sheetsToDoc(tabs, base = {}) {
       unit: norm(r[7]),
       step: num(r[8], 1) || 1,
       days: daysIn(r[9]),
-      order: num(r[10], i),
-      archived: bool(r[11]),
+      order: num(r[11], i),
+      archived: bool(r[12]),
       types: [],
-      plan: {},
+      plan: planIn(r[10]),
     };
   }).filter((t) => categories.some((c) => c.id === t.catId));
 
@@ -212,7 +237,11 @@ export function sheetsToDoc(tabs, base = {}) {
     if (!name) return;
     t.types.push({ id, name, goal: num(r[4], 0) });
     ALL_DAYS.forEach((d) => {
-      if (bool(r[5 + d])) t.plan[d] = [...(t.plan[d] || []), id];
+      if (!bool(r[5 + d])) return;
+      // A typed target's plan is per type, so a whole-target flag read from the
+      // Targets tab is replaced rather than added to.
+      const current = Array.isArray(t.plan[d]) ? t.plan[d] : [];
+      t.plan[d] = [...current, id];
     });
   });
 

@@ -476,6 +476,7 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       step: Math.max(0.01, Number(form.step) || 1),
       unit: form.kind === "amount" ? form.unit : "",
       days: form.period === "week" ? [...M.ALL_DAYS] : (form.days.length ? form.days : [...M.ALL_DAYS]),
+      plan: types.length ? plan : (form.plan || {}),
     };
     update((d) => existing
       ? { ...d, targets: d.targets.map((t) => (t.id === existing.id ? { ...t, ...clean } : t)) }
@@ -571,6 +572,36 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
 
       {form.kind === "tick" && (
         <TypesEditor form={form} set={set} />
+      )}
+
+      {/* A target with types plans which kind falls on which day, and gets that
+          grid inside the types editor. Everything else only needs "which days do
+          I mean to do this". */}
+      {!(form.types || []).length && (
+        <>
+          <Text style={[S.label, { marginTop: 16 }]}>Plan the week (optional)</Text>
+          <Text style={[S.tiny, { marginBottom: 8 }]}>
+            The days you intend to do this. It repeats every week, shows as an
+            outline until you tick it, and never counts as done on its own.
+          </Text>
+          <View style={[S.row, { gap: 5 }]}>
+            {M.ALL_DAYS.map((i) => {
+              const on = M.planEntry(form, i).planned;
+              return (
+                <Pressable key={i}
+                  onPress={() => set(M.setPlannedDay(form, i, !on))}
+                  style={{
+                    flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, alignItems: "center",
+                    borderColor: on ? C.good : C.rule, backgroundColor: on ? C.good : C.card,
+                  }}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: on ? "#fff" : C.ink2 }}>
+                    {M.DOW_LETTER[i]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
       )}
 
       <Text style={[S.tiny, { marginTop: 12 }]}>{M.describe({ ...form, goal: Number(form.goal) || 1 })}</Text>

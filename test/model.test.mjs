@@ -370,5 +370,49 @@ console.log("\n17. suggestions already taken are not offered again");
   eq("everything else survives", M.suggestionsFor(doc, "c_sleep").length, 3);
 }
 
+console.log("\n18. a plan for a target without types");
+{
+  const water = { id: "water", kind: "amount", dir: "at_least", period: "day",
+                  goal: 3, unit: "L", step: 0.25, days: M.ALL_DAYS, plan: {} };
+
+  eq("nothing planned to begin with", M.hasPlan(water), false);
+  eq("no day is planned", M.plannedDays(water), []);
+
+  let t = M.setPlannedDay(water, 1, true);
+  t = M.setPlannedDay(t, 3, true);
+  eq("two days planned", M.plannedDays(t), [1, 3]);
+  eq("the target reports a plan", M.hasPlan(t), true);
+  eq("Tuesday is planned", M.isPlannedOn(t, thisWeek[1]), true);
+  eq("Monday is not", M.isPlannedOn(t, thisWeek[0]), false);
+  eq("no types to list", M.plannedOn(t, thisWeek[1]), []);
+
+  t = M.setPlannedDay(t, 1, false);
+  eq("unplanning a day removes it", M.plannedDays(t), [3]);
+
+  // A planned day that passed unlogged was missed; one still ahead was not.
+  const past = M.keyOf(M.addDays(new Date(), -7));
+  const soon = M.keyOf(M.addDays(new Date(), 7));
+  const everyDay = { ...water, plan: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true } };
+  eq("a planned day gone by with nothing logged is missed",
+     M.planStatus(everyDay, past, {}).missed, ["*"]);
+  eq("the same day with something logged is not",
+     M.planStatus(everyDay, past, { [past]: { water: 3 } }).missed, []);
+  eq("a planned day still ahead is never missed", M.planStatus(everyDay, soon, {}).missed, []);
+  eq("but it was still asked for", M.planStatus(everyDay, soon, {}).askedFor, true);
+}
+
+console.log("\n19. typed and untyped plans do not interfere");
+{
+  const typed = {
+    id: "str", kind: "tick", dir: "at_least", period: "week", goal: 4, days: M.ALL_DAYS,
+    types: [{ id: "arms", name: "Arms" }],
+    plan: { 0: ["arms"] },
+  };
+  eq("a typed plan still lists its kinds", M.plannedOn(typed, thisWeek[0]), ["arms"]);
+  eq("and reports as planned", M.isPlannedOn(typed, thisWeek[0]), true);
+  eq("planned days read the same way", M.plannedDays(typed), [0]);
+  eq("an untouched day is not planned", M.isPlannedOn(typed, thisWeek[1]), false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

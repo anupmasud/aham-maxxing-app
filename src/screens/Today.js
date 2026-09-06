@@ -47,10 +47,11 @@ export default function Today({ doc, update, day, setDay }) {
           <Text style={[S.tiny, { marginTop: 2 }]}>
             {Math.abs(diff) <= 1
               ? fmtDay(date)
-              : `${-diff} days ago · ${date.toLocaleDateString(undefined, { day: "numeric", month: "long" })}`}
+              : `${diff < 0 ? `${-diff} days ago` : `in ${diff} days`} · ${
+                  date.toLocaleDateString(undefined, { day: "numeric", month: "long" })}`}
           </Text>
         </View>
-        <Arrow glyph="›" onPress={() => setDay(M.keyOf(M.addDays(date, 1)))} disabled={diff >= 0} />
+        <Arrow glyph="›" onPress={() => setDay(M.keyOf(M.addDays(date, 1)))} />
       </View>
 
       {/* ---- score ---- */}
@@ -78,6 +79,13 @@ export default function Today({ doc, update, day, setDay }) {
       </View>
 
       {/* ---- targets ---- */}
+      {M.isFuture(day) && (
+        <Text style={[S.muted, { textAlign: "center", marginBottom: 12, color: C.warn }]}>
+          A day still to come. Dashed outlines are what the plan asks for — you can
+          tick them off when it arrives.
+        </Text>
+      )}
+
       {cats.length === 0 && (
         <Text style={S.empty}>Nothing scheduled for this day.{"\n"}Add targets in Setup.</Text>
       )}
@@ -93,7 +101,9 @@ export default function Today({ doc, update, day, setDay }) {
             {rows.map((t, i) => (
               <View key={t.id}>
                 {i > 0 && <View style={S.rule} />}
-                {M.hasTypes(t) ? (
+                {M.isFuture(day) ? (
+                  <PlannedRow t={t} day={day} />
+                ) : M.hasTypes(t) ? (
                   <TypedRow
                     t={t} day={day} log={log}
                     onToggleType={(id) => setLog((l) => M.toggleType(l, t, day, id))}
@@ -179,6 +189,31 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
           onPress={onEdit}
         />
       )}
+    </View>
+  );
+}
+
+/* A day that has not happened yet. It shows what the plan asked for and
+   nothing else — no circle to tap, because recording a session before it has
+   happened would put work into the week's totals that nobody has done. */
+function PlannedRow({ t, day }) {
+  const planned = M.isPlannedOn(t, day);
+  const types = M.plannedOn(t, day);
+
+  return (
+    <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, gap: 11, opacity: planned ? 1 : 0.45 }]}>
+      <View style={{
+        width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderStyle: "dashed",
+        borderColor: planned ? C.ink2 : C.rule,
+      }} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14.5, color: C.ink }}>{t.name}</Text>
+        <Text style={[S.tiny, { marginTop: 2 }]}>
+          {planned
+            ? (types.length ? `Planned: ${types.map((id) => M.typeName(t, id)).join(", ")}` : "Planned")
+            : M.describe(t)}
+        </Text>
+      </View>
     </View>
   );
 }

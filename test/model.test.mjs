@@ -158,5 +158,81 @@ console.log("\n10. seed data is coherent");
   eq("suggestions only use known kinds", [...kinds].sort(), ["amount", "tick"]);
 }
 
+console.log("\n11. types on a target, and older log shapes still readable");
+{
+  const strength = {
+    id: "str", kind: "tick", dir: "at_least", period: "week", goal: 4, unit: "", step: 1, days: M.ALL_DAYS,
+    types: [
+      { id: "lymph", name: "Lymph drainage", goal: 5 },
+      { id: "full",  name: "Full body",      goal: 2 },
+      { id: "waist", name: "Waist" },
+      { id: "arms",  name: "Arms",           goal: 2 },
+    ],
+    plan: { 0: ["arms"], 2: ["full"], 4: ["lymph", "waist"] },
+  };
+
+  eq("target reports having types", M.hasTypes(strength), true);
+  eq("a plain target does not", M.hasTypes(T.walk), false);
+
+  let log = {};
+  log = M.toggleType(log, strength, thisWeek[0], "arms");
+  eq("one type done is one session", M.valueOn(log, "str", thisWeek[0]), 1);
+  eq("and it is recorded", M.typesOn(log, "str", thisWeek[0]), ["arms"]);
+
+  log = M.toggleType(log, strength, thisWeek[0], "lymph");
+  eq("two types on a day count as two", M.valueOn(log, "str", thisWeek[0]), 2);
+
+  log = M.toggleType(log, strength, thisWeek[0], "arms");
+  eq("toggling off removes just that type", M.typesOn(log, "str", thisWeek[0]), ["lymph"]);
+
+  log = M.toggleType(log, strength, thisWeek[0], "lymph");
+  eq("removing the last type clears the day", Object.keys(log).length, 0);
+
+  // Older documents stored ticks as `true` and amounts as numbers.
+  const legacy = { [thisWeek[1]]: { str: true, walk: 45 } };
+  eq("legacy tick still reads as one", M.valueOn(legacy, "str", thisWeek[1]), 1);
+  eq("legacy tick has no types", M.typesOn(legacy, "str", thisWeek[1]), []);
+  eq("legacy number still reads", M.valueOn(legacy, "walk", thisWeek[1]), 45);
+
+  // Per-type counts across the week.
+  let wk = {};
+  ["lymph", "lymph", "lymph", "arms"].forEach((id, i) => { wk = M.toggleType(wk, strength, thisWeek[i], id); });
+  eq("lymph counted three times", M.typeProgress(strength, strength.types[0], thisWeek[0], wk).total, 3);
+  eq("its own goal of 5 not met", M.typeProgress(strength, strength.types[0], thisWeek[0], wk).met, false);
+  eq("a type with no goal reports none", M.typeProgress(strength, strength.types[2], thisWeek[0], wk).met, null);
+  eq("parent total counts every session", M.progress(strength, thisWeek[0], wk).total, 4);
+  eq("parent goal of 4 met", M.progress(strength, thisWeek[0], wk).met, true);
+}
+
+console.log("\n12. the weekly plan");
+{
+  const strength = {
+    id: "str", kind: "tick", dir: "at_least", period: "week", goal: 4, days: M.ALL_DAYS,
+    types: [{ id: "arms", name: "Arms" }, { id: "full", name: "Full body" }],
+    plan: { 0: ["arms"], 2: ["full"] },
+  };
+
+  eq("Monday plans arms", M.plannedOn(strength, thisWeek[0]), ["arms"]);
+  eq("Tuesday plans nothing", M.plannedOn(strength, thisWeek[1]), []);
+  eq("target reports having a plan", M.hasPlan(strength), true);
+  eq("a target without one does not", M.hasPlan({ ...strength, plan: {} }), false);
+
+  const done = M.toggleType({}, strength, thisWeek[0], "arms");
+  const kept = M.planStatus(strength, thisWeek[0], done);
+  eq("planned and done is kept", kept.kept, ["arms"]);
+  eq("nothing missed", kept.missed, []);
+
+  const swapped = M.toggleType({}, strength, thisWeek[0], "full");
+  const st = M.planStatus(strength, thisWeek[0], swapped);
+  eq("planned but not done is missed", st.missed, ["arms"]);
+  eq("done but not planned is extra", st.extra, ["full"]);
+
+  // A day still ahead of you is not a failure.
+  const future = M.keyOf(M.addDays(new Date(), 3));
+  const futurePlan = { ...strength, plan: { [M.dow(M.parseKey(future))]: ["arms"] } };
+  eq("a future day is never missed", M.planStatus(futurePlan, future, {}).missed, []);
+  eq("but it is still planned", M.planStatus(futurePlan, future, {}).planned, ["arms"]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

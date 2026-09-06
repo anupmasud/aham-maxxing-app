@@ -26,7 +26,18 @@ export const SEED_CATEGORIES = [
 /* The targets you described, ready to use on first run. */
 export const SEED_TARGETS = [
   { catId: "c_move",   name: "Walk",              kind: "amount", dir: "at_least", period: "day",  goal: 30,   unit: "min",   step: 5 },
-  { catId: "c_move",   name: "Strength training", kind: "tick",   dir: "at_least", period: "week", goal: 4,    unit: "",      step: 1 },
+  /* Types let one target answer "how many sessions" and "which kind" at once.
+     Lymph drainage carries its own weekly minimum; the rest just need to add
+     up to the parent goal. The plan pencils types onto weekdays — a template
+     that repeats, not a diary, so it survives into next week untouched. */
+  { catId: "c_move",   name: "Strength training", kind: "tick",   dir: "at_least", period: "week", goal: 5,    unit: "",      step: 1,
+    types: [
+      { id: "ty_lymph", name: "Lymph drainage", goal: 5 },
+      { id: "ty_full",  name: "Full body",      goal: 1 },
+      { id: "ty_waist", name: "Waist",          goal: 1 },
+      { id: "ty_arms",  name: "Arms",           goal: 1 },
+    ],
+    plan: { 0: ["ty_lymph", "ty_arms"], 1: ["ty_lymph"], 2: ["ty_lymph", "ty_full"], 3: ["ty_lymph"], 4: ["ty_lymph", "ty_waist"] } },
   { catId: "c_move",   name: "Steps",             kind: "amount", dir: "at_least", period: "day",  goal: 8000, unit: "steps", step: 500 },
   { catId: "c_food",   name: "Water",             kind: "amount", dir: "at_least", period: "day",  goal: 3,    unit: "L",     step: 0.25 },
   { catId: "c_limits", name: "Alcohol",           kind: "amount", dir: "at_most",  period: "week", goal: 6,    unit: "units", step: 1 },

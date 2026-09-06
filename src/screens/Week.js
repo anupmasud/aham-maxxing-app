@@ -117,7 +117,9 @@ function Cell({ t, dayKey, log, setLog, setDay }) {
   let bg = C.card, border = C.ruleSoft, fg = C.ink3, label = "";
 
   if (t.kind === "tick") {
-    if (v) { bg = C.good; border = C.good; fg = "#fff"; label = "✓"; }
+    // With types, two kinds done in a day is two sessions, so show the number
+    // rather than a tick that hides half the work.
+    if (v) { bg = C.good; border = C.good; fg = "#fff"; label = v > 1 ? String(v) : "✓"; }
   } else if (v) {
     // Round to a whole "k" only above 10k; below that, rounding could show
     // 7,500 steps as "8k" against an 8,000 goal, which reads as a hit.
@@ -138,8 +140,12 @@ function Cell({ t, dayKey, log, setLog, setDay }) {
   return (
     <Pressable
       onPress={() => {
-        if (t.kind === "tick") setLog((l) => M.toggle(l, t, dayKey));
-        else setDay(dayKey);           // amounts are edited on Today, where there is room
+        // A plain tick can be toggled straight from the grid. Anything with a
+        // number or types needs the room Today gives it — toggling a typed
+        // target here would record "one session, kind unknown" and quietly
+        // throw away the detail that was the point of having types.
+        if (t.kind === "tick" && !M.hasTypes(t)) setLog((l) => M.toggle(l, t, dayKey));
+        else setDay(dayKey);
       }}
       style={{ flex: 1, alignItems: "center", paddingVertical: 2, opacity: future ? 0.4 : 1 }}
     >

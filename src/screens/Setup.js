@@ -199,8 +199,18 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
   const save = () => {
     const name = (form.name || "").trim();
     if (!name) return;
+    const types = (form.types || [])
+      .map((t) => ({ ...t, name: (t.name || "").trim(), goal: Number(t.goal) || 0 }))
+      .filter((t) => t.name);
+    const keep = new Set(types.map((t) => t.id));
+    const plan = Object.fromEntries(
+      Object.entries(form.plan || {})
+        .map(([d, ids]) => [d, (ids || []).filter((id) => keep.has(id))])
+        .filter(([, ids]) => ids.length)
+    );
+
     const clean = {
-      ...form, name,
+      ...form, name, types, plan,
       goal: Math.max(0, Number(form.goal) || 1),
       step: Math.max(0.01, Number(form.step) || 1),
       unit: form.kind === "amount" ? form.unit : "",
@@ -296,6 +306,10 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
         </>
       )}
 
+      {form.kind === "tick" && (
+        <TypesEditor form={form} set={set} />
+      )}
+
       <Text style={[S.tiny, { marginTop: 12 }]}>{M.describe({ ...form, goal: Number(form.goal) || 1 })}</Text>
 
       <View style={[S.row, { gap: 9, marginTop: 14 }]}>
@@ -303,6 +317,116 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
         <Btn primary label="Save" onPress={save} style={{ flex: 1 }} />
       </View>
     </Sheet>
+  );
+}
+
+/* ---------------------------------------------------------- types + plan --
+   Types belong to tick targets only. "Did you do it, and which kind" is a
+   sensible question; "how many minutes, and which kind" is two measurements
+   wearing one coat, so the editor keeps them apart rather than pretending. */
+
+function TypesEditor({ form, set }) {
+  const types = form.types || [];
+  const plan = form.plan || {};
+
+  const addType = () => set({
+    types: [...types, { id: M.uid("ty_"), name: "", goal: 0 }],
+  });
+
+  const patchType = (id, patch) =>
+    set({ types: types.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+
+  const removeType = (id) => set({
+    types: types.filter((t) => t.id !== id),
+    plan: Object.fromEntries(
+      Object.entries(plan).map(([d, ids]) => [d, (ids || []).filter((x) => x !== id)])
+    ),
+  });
+
+  const togglePlan = (dayIndex, typeId) => {
+    const current = plan[dayIndex] || [];
+    const next = current.includes(typeId)
+      ? current.filter((x) => x !== typeId)
+      : [...current, typeId];
+    set({ plan: { ...plan, [dayIndex]: next } });
+  };
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <View style={[S.row, { marginBottom: 4 }]}>
+        <Text style={[S.label, { flex: 1, marginBottom: 0 }]}>Types (optional)</Text>
+        <Btn small label="+ Type" onPress={addType} />
+      </View>
+      <Text style={[S.tiny, { marginBottom: 8 }]}>
+        Break one target into kinds — lymph drainage, full body, arms. Each kind
+        you tick counts as one session towards the target above, and can carry
+        its own weekly minimum.
+      </Text>
+
+      {types.map((ty) => (
+        <View key={ty.id} style={[S.row, { gap: 8, marginBottom: 8 }]}>
+          <TextInput
+            style={[S.input, { flex: 1 }]}
+            value={ty.name}
+            placeholder="e.g. Lymph drainage"
+            onChangeText={(v) => patchType(ty.id, { name: v })}
+          />
+          <View style={{ width: 74 }}>
+            <TextInput
+              style={[S.input, { textAlign: "center" }]}
+              keyboardType="number-pad"
+              value={ty.goal ? String(ty.goal) : ""}
+              placeholder="×/wk"
+              onChangeText={(v) => patchType(ty.id, { goal: Number(v) || 0 })}
+            />
+          </View>
+          <Mini glyph="✕" danger onPress={() => removeType(ty.id)} />
+        </View>
+      ))}
+
+      {types.length > 0 && (
+        <>
+          <Text style={[S.label, { marginTop: 12 }]}>Plan the week (optional)</Text>
+          <Text style={[S.tiny, { marginBottom: 8 }]}>
+            Pencil each kind onto the days you intend to do it. This repeats every
+            week, so it carries forward without retyping — and a planned day you
+            miss is only marked once it has actually passed.
+          </Text>
+
+          <View style={[S.row, { paddingLeft: 96, marginBottom: 3 }]}>
+            {M.ALL_DAYS.map((i) => (
+              <Text key={i} style={[S.tiny, { flex: 1, textAlign: "center", fontWeight: "700" }]}>
+                {M.DOW_LETTER[i]}
+              </Text>
+            ))}
+          </View>
+
+          {types.map((ty) => (
+            <View key={ty.id} style={[S.row, { marginBottom: 4 }]}>
+              <Text style={{ width: 92, fontSize: 12, color: C.ink }} numberOfLines={1}>
+                {ty.name || "Untitled"}
+              </Text>
+              {M.ALL_DAYS.map((i) => {
+                const on = (plan[i] || []).includes(ty.id);
+                return (
+                  <Pressable key={i} onPress={() => togglePlan(i, ty.id)}
+                    style={{ flex: 1, alignItems: "center", paddingVertical: 2 }}>
+                    <View style={{
+                      width: 26, height: 26, borderRadius: 7, borderWidth: 1,
+                      borderColor: on ? C.good : C.rule,
+                      backgroundColor: on ? C.good : C.card,
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Text style={{ color: on ? "#fff" : "transparent", fontSize: 12, fontWeight: "700" }}>✓</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </>
+      )}
+    </View>
   );
 }
 

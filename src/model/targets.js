@@ -50,15 +50,31 @@ export const fmtNum = (n) => {
 
 /* ------------------------------------------------------------- readings -- */
 
-/* Ticks are stored as true, amounts as numbers; both read out as a number. */
-export function valueOn(log, targetId, dayKey) {
-  const day = log[dayKey];
-  if (!day) return 0;
-  const v = day[targetId];
-  if (v === true) return 1;
-  if (v === false || v == null) return 0;
-  return Number(v) || 0;
+/* One day's entry for one target, in a single shape whatever was stored.
+
+   Ticks were originally `true` and amounts plain numbers. Targets with types
+   (a strength session that was arms, or waist) need to record *which*, so an
+   entry may also be `{ n, v }` — a count and the list of type ids. Reading
+   everything through here means the older shapes keep working untouched, which
+   matters when the file has been sitting in someone's Drive for months. */
+export function entryOf(log, targetId, dayKey) {
+  const v = (log[dayKey] || {})[targetId];
+  if (v == null || v === false) return { n: 0, v: [] };
+  if (v === true) return { n: 1, v: [] };
+  if (typeof v === "number") return { n: v, v: [] };
+  if (typeof v === "object") {
+    const list = Array.isArray(v.v) ? v.v : [];
+    return { n: Number(v.n) || list.length, v: list };
+  }
+  return { n: 0, v: [] };
 }
+
+export const valueOn = (log, targetId, dayKey) => entryOf(log, targetId, dayKey).n;
+
+/* Which types were done on a day. */
+export const typesOn = (log, targetId, dayKey) => entryOf(log, targetId, dayKey).v;
+
+export const hasTypes = (t) => Array.isArray(t.types) && t.types.length > 0;
 
 /* Does this target apply on this date at all? Weekly targets are eligible on
    any of their chosen days; daily ones are scheduled on theirs. */
@@ -176,7 +192,8 @@ export function describe(t) {
 
   if (t.period === "week") {
     if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a week`;
-    return t.kind === "tick" ? `${fmtNum(t.goal)}× a week` : `At least ${fmtNum(t.goal)}${unit} a week`;
+    const base = t.kind === "tick" ? `${fmtNum(t.goal)}× a week` : `At least ${fmtNum(t.goal)}${unit} a week`;
+    return hasTypes(t) ? `${base} · ${t.types.length} types` : base;
   }
   if (t.kind === "tick") return `Every day${days}`;
   if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a day${days}`;
@@ -215,5 +232,71 @@ export function step(log, t, dayKey, delta) {
   const next = Math.max(0, round2(valueOn(log, t.id, dayKey) + delta * t.step));
   return setValue(log, t.id, dayKey, next);
 }
+
+/* ---------------------------------------------------------------- types --
+   Only tick targets carry types. "Did you do it, and which kind" is a sensible
+   question; "how many minutes, and which kind" is two measurements wearing one
+   coat, and the editor keeps them apart rather than pretending otherwise. */
+
+/* Each type done on a day counts as one session, so ticking arms and waist on
+   the same day is two towards a weekly total of four. */
+export function setTypes(log, t, dayKey, ids) {
+  const list = [...new Set(ids)].filter(Boolean);
+  if (!list.length) return setValue(log, t.id, dayKey, 0);
+  const next = { ...log };
+  next[dayKey] = { ...(next[dayKey] || {}), [t.id]: { n: list.length, v: list } };
+  return next;
+}
+
+export function toggleType(log, t, dayKey, typeId) {
+  const current = typesOn(log, t.id, dayKey);
+  return setTypes(log, t, dayKey,
+    current.includes(typeId) ? current.filter((x) => x !== typeId) : [...current, typeId]);
+}
+
+/* How often one type was done across the week containing `dayKey`. */
+export function typeProgress(t, type, dayKey, log) {
+  const window = t.period === "week"
+    ? weekKeys(startOfWeek(parseKey(dayKey)))
+    : [dayKey];
+  const total = window.filter((k) => typesOn(log, t.id, k).includes(type.id)).length;
+  const goal = Number(type.goal) || 0;
+  return { total, goal, met: goal ? total >= goal : null };
+}
+
+/* ----------------------------------------------------------- weekly plan --
+   `t.plan` maps a weekday (0=Mon) to the type ids intended for that day. It is
+   a template that repeats each week rather than a diary of specific dates —
+   which is what "a plan for the week" usually means, and it survives into next
+   week without being retyped. */
+
+export function plannedOn(t, dayKey) {
+  const plan = t.plan || {};
+  return plan[dow(parseKey(dayKey))] || [];
+}
+
+/* What the plan expected against what actually happened. A day still to come
+   is never "missed" — it is simply ahead of you. */
+export function planStatus(t, dayKey, log) {
+  const planned = plannedOn(t, dayKey);
+  const done = typesOn(log, t.id, dayKey);
+  return {
+    planned,
+    done,
+    kept: planned.filter((id) => done.includes(id)),
+    missed: isFuture(dayKey) ? [] : planned.filter((id) => !done.includes(id)),
+    extra: done.filter((id) => !planned.includes(id)),
+  };
+}
+
+/* Does this target have any plan at all? Drives whether the week view bothers
+   showing ghosts for what was intended. */
+export const hasPlan = (t) =>
+  !!t.plan && Object.values(t.plan).some((list) => Array.isArray(list) && list.length);
+
+export const typeName = (t, id) => {
+  const found = (t.types || []).find((x) => x.id === id);
+  return found ? found.name : id;
+};
 
 export const uid = (p) => p + Math.random().toString(36).slice(2, 9);

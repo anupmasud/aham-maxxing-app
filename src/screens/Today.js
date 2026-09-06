@@ -84,12 +84,19 @@ export default function Today({ doc, update, day, setDay }) {
             {rows.map((t, i) => (
               <View key={t.id}>
                 {i > 0 && <View style={S.rule} />}
-                <TargetRow
-                  t={t} day={day} log={log}
-                  onToggle={() => setLog((l) => M.toggle(l, t, day))}
-                  onStep={(delta) => setLog((l) => M.step(l, t, day, delta))}
-                  onEdit={() => setEditing({ target: t, dayKey: day })}
-                />
+                {M.hasTypes(t) ? (
+                  <TypedRow
+                    t={t} day={day} log={log}
+                    onToggleType={(id) => setLog((l) => M.toggleType(l, t, day, id))}
+                  />
+                ) : (
+                  <TargetRow
+                    t={t} day={day} log={log}
+                    onToggle={() => setLog((l) => M.toggle(l, t, day))}
+                    onStep={(delta) => setLog((l) => M.step(l, t, day, delta))}
+                    onEdit={() => setEditing({ target: t, dayKey: day })}
+                  />
+                )}
               </View>
             ))}
           </View>
@@ -166,6 +173,65 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
           onPress={onEdit}
         />
       )}
+    </View>
+  );
+}
+
+/* A target with types: the weekly total, then one chip per type. Chips the
+   plan asked for today are outlined, so the row reads as "here is what you
+   said you would do" before it reads as a list of options. */
+function TypedRow({ t, day, log, onToggleType }) {
+  const p = M.progress(t, day, log);
+  const done = M.typesOn(log, t.id, day);
+  const planned = M.plannedOn(t, day);
+
+  return (
+    <View style={{ paddingVertical: 11, paddingHorizontal: 13 }}>
+      <View style={[S.row, { gap: 11 }]}>
+        <Tick on={p.met} onPress={() => {}} disabled />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14.5, color: p.met ? C.ink2 : C.ink }}>{t.name}</Text>
+          <Text style={[S.tiny, { marginTop: 2 }]}>
+            <Text style={{ color: p.met ? C.good : C.ink2, fontWeight: p.met ? "600" : "400" }}>
+              {`${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} this week`}
+            </Text>
+            {planned.length ? `  ·  ${planned.length} planned today` : ""}
+          </Text>
+          <Bar ratio={p.ratio} />
+        </View>
+      </View>
+
+      <View style={[S.row, { flexWrap: "wrap", marginTop: 9, marginLeft: 38 }]}>
+        {t.types.map((ty) => {
+          const on = done.includes(ty.id);
+          const isPlanned = planned.includes(ty.id);
+          const tp = M.typeProgress(t, ty, day, log);
+          return (
+            <Pressable
+              key={ty.id}
+              onPress={() => onToggleType(ty.id)}
+              style={({ pressed }) => [{
+                flexDirection: "row", alignItems: "center", gap: 5,
+                borderWidth: isPlanned && !on ? 1.5 : 1,
+                borderStyle: isPlanned && !on ? "dashed" : "solid",
+                borderColor: on ? C.good : isPlanned ? C.ink2 : C.rule,
+                backgroundColor: on ? C.good : "transparent",
+                borderRadius: 999, paddingVertical: 6, paddingHorizontal: 11,
+                marginRight: 6, marginBottom: 6, opacity: pressed ? 0.6 : 1,
+              }]}
+            >
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: on ? "#fff" : C.ink }}>
+                {ty.name}
+              </Text>
+              {!!ty.goal && (
+                <Text style={{ fontSize: 10.5, color: on ? "rgba(255,255,255,0.85)" : tp.met ? C.good : C.ink3 }}>
+                  {tp.total}/{ty.goal}
+                </Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }

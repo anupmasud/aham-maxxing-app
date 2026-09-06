@@ -65,6 +65,7 @@ export const SUGGESTIONS = {
     { name: "Meat",        kind: "amount", dir: "at_most", period: "week", goal: 3, unit: "meals",  step: 1 },
     { name: "Takeaway",    kind: "amount", dir: "at_most", period: "week", goal: 1, unit: "meals",  step: 1 },
     { name: "Caffeine",    kind: "amount", dir: "at_most", period: "day",  goal: 2, unit: "cups",   step: 1 },
+    { name: "Dessert",     kind: "amount", dir: "at_most", period: "week", goal: 2, unit: "times",  step: 1 },
     { name: "Added sugar", kind: "amount", dir: "at_most", period: "week", goal: 3, unit: "treats", step: 1 },
   ],
   c_sleep: [

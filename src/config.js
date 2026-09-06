@@ -29,6 +29,13 @@ export const CONFIG = {
      cannot see folders it did not make. Rename or move the folder afterwards
      and nothing breaks: it is remembered by id, not by path. */
   folderPath: ["Apps", "AhamMaxxing"],
+
+  /* The spreadsheet's name in Drive. Keep it recognisable — this is what you
+     will see in a list of files, and what a search has to match. */
+  sheetName: "AhamMaxxing",
+
+  /* The old JSON store. Kept only so an existing document can be carried into
+     the spreadsheet on first run; nothing is written to it any more. */
   fileName: "ahammaxxing-data.json",
 
   /* The document a brand-new person starts with: eleven categories and the

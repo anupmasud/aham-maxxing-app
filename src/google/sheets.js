@@ -22,7 +22,11 @@ const FILES = "https://www.googleapis.com/drive/v3/files";
 const SHEET_CACHE = "ahammaxxing:sheetId";
 const SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 
-const TITLE = CONFIG.fileName.replace(/\.json$/i, "") || "AhamMaxxing";
+const TITLE = CONFIG.sheetName || "AhamMaxxing";
+/* What the spreadsheet used to be called, before it was named after the app
+   rather than after the file it replaced. Looked up so an existing sheet is
+   renamed rather than abandoned with a second one created beside it. */
+const OLD_TITLE = CONFIG.fileName.replace(/\.json$/i, "");
 const ORDER = [TABS.CATS, TABS.TARGETS, TABS.TYPES, TABS.LOG];
 
 /* Every call goes through here so the stale-token retry lives in one place. */
@@ -48,14 +52,26 @@ const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 /* ---------------------------------------------------------- the workbook -- */
 
 async function findSheet(folderId) {
+  const names = [TITLE, OLD_TITLE].filter(Boolean).map((n) => `name = '${esc(n)}'`).join(" or ");
   const params = new URLSearchParams({
-    q: `name = '${esc(TITLE)}' and mimeType = '${SHEET_MIME}' and trashed = false and '${folderId}' in parents`,
+    q: `(${names}) and mimeType = '${SHEET_MIME}' and trashed = false and '${folderId}' in parents`,
     spaces: "drive",
     fields: "files(id, name, modifiedTime)",
     pageSize: "5",
   });
   const data = await req(`${FILES}?${params}`);
-  return (data.files || [])[0] || null;
+  const files = data.files || [];
+  const found = files.find((f) => f.name === TITLE) || files[0] || null;
+
+  // Bring a sheet created under the old name up to date rather than stranding
+  // it and quietly starting a second one.
+  if (found && found.name !== TITLE) {
+    await req(`${FILES}/${found.id}?fields=id`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: TITLE }),
+    }).catch(() => {});
+  }
+  return found;
 }
 
 async function createSheet(folderId) {

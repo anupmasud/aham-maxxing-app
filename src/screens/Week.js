@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { C, S } from "../ui/kit";
+import { LogSheet } from "../ui/LogSheet";
 import * as M from "../model/targets";
 
 const fmtShort = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
-export default function Week({ doc, update, day, setDay, setTab }) {
+export default function Week({ doc, update, day }) {
   const [monday, setMonday] = useState(M.keyOf(M.startOfWeek(M.parseKey(day))));
   const keys = M.weekKeys(M.parseKey(monday));
   const thisMonday = M.keyOf(M.startOfWeek(new Date()));
@@ -17,10 +18,11 @@ export default function Week({ doc, update, day, setDay, setTab }) {
   const log = doc.log || {};
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
 
-  /* Anything needing more room than a 30px cell opens that day on Today —
-     including days already past, which is how you backfill water you forgot
-     to log on Tuesday. */
-  const openDay = (k) => { setDay(k); setTab("today"); };
+  /* Anything needing more room than a 30px cell opens a sheet right here.
+     Sending someone to another tab to type a number they are already looking
+     at is a context switch with nothing to show for it — and backfilling
+     Tuesday's water is exactly what this grid is for. */
+  const [editing, setEditing] = useState(null);   // { target, dayKey }
 
   const groups = (doc.categories || [])
     .slice().sort((a, b) => a.order - b.order)
@@ -67,10 +69,19 @@ export default function Week({ doc, update, day, setDay, setTab }) {
           </View>
 
           {rows.map((t) => (
-            <Row key={t.id} t={t} keys={keys} log={log} setLog={setLog} open={openDay} />
+            <Row key={t.id} t={t} keys={keys} log={log} setLog={setLog}
+                 open={(k) => setEditing({ target: t, dayKey: k })} />
           ))}
         </View>
       ))}
+
+      <LogSheet
+        target={editing?.target}
+        dayKey={editing?.dayKey}
+        log={log}
+        onChangeLog={(next) => setLog(() => next)}
+        onClose={() => setEditing(null)}
+      />
     </ScrollView>
   );
 }

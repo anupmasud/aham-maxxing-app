@@ -1,9 +1,10 @@
 /* Today — the day's ring, a week strip, and every target grouped by category. */
 
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { C, S, Bar, Btn, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
+import { C, S, Bar, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
+import { LogSheet } from "../ui/LogSheet";
 import * as M from "../model/targets";
 
 const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
@@ -111,15 +112,12 @@ export default function Today({ doc, update, day, setDay }) {
         );
       })}
 
-      <AmountModal
-        editing={editing}
+      <LogSheet
+        target={editing?.target}
+        dayKey={editing?.dayKey}
         log={log}
+        onChangeLog={(next) => setLog(() => next)}
         onClose={() => setEditing(null)}
-        onSave={(value) => {
-          setLog((l) => M.setValue(l, editing.target.id, editing.dayKey,
-            editing.target.kind === "tick" ? (value ? true : 0) : value));
-          setEditing(null);
-        }}
       />
     </ScrollView>
   );
@@ -277,72 +275,6 @@ function WeekStrip({ doc, day, setDay }) {
         );
       })}
     </View>
-  );
-}
-
-/* --------------------------------------------------------------- modal --- */
-
-function AmountModal({ editing, log, onClose, onSave }) {
-  const [text, setText] = useState("");
-  const t = editing?.target;
-
-  // Seed the field each time a different row is opened.
-  const key = editing ? `${t.id}:${editing.dayKey}` : null;
-  const [seeded, setSeeded] = useState(null);
-  if (editing && seeded !== key) {
-    const v = M.valueOn(log, t.id, editing.dayKey);
-    setSeeded(key);
-    setText(v ? String(v) : "");
-  }
-  if (!editing && seeded !== null) setSeeded(null);
-
-  if (!editing) return null;
-
-  const quick = [...new Set([t.step, t.goal, M.round2(t.goal / 2)].filter((n) => n > 0))].sort((a, b) => a - b);
-
-  return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)", justifyContent: "flex-end" }}>
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          style={{ backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, paddingBottom: 30 }}
-        >
-          <Text style={[S.h1, { fontSize: 20, marginBottom: 4 }]}>{t.name}</Text>
-          <Text style={[S.muted, { marginBottom: 14 }]}>
-            {M.parseKey(editing.dayKey).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
-            {"  ·  "}{M.describe(t)}
-          </Text>
-
-          <Text style={S.label}>Logged{t.unit ? ` (${t.unit})` : ""}</Text>
-          <TextInput
-            style={S.input}
-            keyboardType="decimal-pad"
-            value={text}
-            onChangeText={setText}
-            placeholder="0"
-            autoFocus
-          />
-
-          <View style={[S.row, { flexWrap: "wrap", marginTop: 10, gap: 7 }]}>
-            <Btn small label="Clear" onPress={() => setText("")} />
-            {quick.map((q) => (
-              <Btn key={q} small label={`${M.fmtNum(q)}${t.unit ? " " + t.unit : ""}`} onPress={() => setText(String(q))} />
-            ))}
-          </View>
-
-          <View style={[S.row, { gap: 9, marginTop: 16 }]}>
-            <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
-            <Btn
-              primary label="Save" style={{ flex: 1 }}
-              onPress={() => {
-                const n = Number(text);
-                onSave(!text || isNaN(n) || n <= 0 ? 0 : M.round2(n));
-              }}
-            />
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
   );
 }
 

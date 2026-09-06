@@ -76,9 +76,42 @@ export const typesOn = (log, targetId, dayKey) => entryOf(log, targetId, dayKey)
 
 export const hasTypes = (t) => Array.isArray(t.types) && t.types.length > 0;
 
+/* ------------------------------------------------------------- end date --
+   A recurring plan repeats forever unless something stops it. `until` is the
+   last date a target runs, inclusive — Spanish every day until the trip, the
+   LED mask three times a week for the eight weeks of the course.
+
+   It is deliberately not the same as archiving. Archiving pauses a target now
+   and strikes it through the list; an end date is a decision made in advance
+   about a date that may not have arrived yet, and the target behaves entirely
+   normally until it does. Both leave history alone. */
+
+/* The last day this target runs, or "" for one with no end. Stored as a date
+   key so it sorts and compares as a string. */
+export const endOf = (t) => (isDateKey(t.until) ? t.until : "");
+
+/* Was this target still running on this date? */
+export const runsOn = (t, dayKey) => {
+  const end = endOf(t);
+  return !end || dayKey <= end;
+};
+
+/* Has its end date already passed? For labelling it in a list, where the
+   question is about now rather than about a particular date. */
+export const hasEnded = (t) => {
+  const end = endOf(t);
+  return !!end && end < todayKey();
+};
+
+/* Sets or clears the end date. Anything that is not a date key clears it, so a
+   half-typed value in a text field can never end a target by accident. */
+export const setEnd = (t, dayKey) => ({ ...t, until: isDateKey(dayKey) ? dayKey : "" });
+
 /* Does this target apply on this date at all? Weekly targets are eligible on
-   any of their chosen days; daily ones are scheduled on theirs. */
+   any of their chosen days; daily ones are scheduled on theirs — and neither
+   applies past the day it was set to end. */
 export function appliesOn(t, dayKey) {
+  if (!runsOn(t, dayKey)) return false;
   const days = t.days && t.days.length ? t.days : ALL_DAYS;
   return days.includes(dow(parseKey(dayKey)));
 }
@@ -160,11 +193,19 @@ export function streak(t, log, from) {
   const floor = from || todayKey();
 
   if (t.period === "week") {
-    let monday = startOfWeek(new Date());
+    // A target that has ended keeps the streak it finished on rather than
+    // having it eaten away by the empty weeks since.
+    const end = endOf(t);
+    let monday = startOfWeek(end && end < todayKey() ? parseKey(end) : new Date());
     if (!progress(t, keyOf(monday), log).met) monday = addDays(monday, -7);
     let n = 0;
     for (let i = 0; i < 260; i++) {
-      if (daysBetween(floor, keyOf(addDays(monday, 6))) < 0) break;
+      /* The whole week has to be yours, not just its last day. Testing the
+         Sunday let the week you started in count — begin on a Friday and an
+         untouched ceiling had already streaked two weeks by Monday. It is the
+         same rule the hit rates use: a week you were only present for part of
+         is not a week you kept. */
+      if (daysBetween(floor, keyOf(monday)) < 0) break;
       if (!progress(t, keyOf(monday), log).met) break;
       n++;
       monday = addDays(monday, -7);
@@ -194,7 +235,12 @@ export function streak(t, log, from) {
 
 export function targetStats(t, keys, log) {
   if (t.period === "week") {
-    const mondays = [...new Set(keys.map((k) => keyOf(startOfWeek(parseKey(k)))))];
+    /* A week only counts if the target ran for all of it. Ending something on
+       a Wednesday leaves a two-day week that a "three times a week" goal was
+       never going to be met in, and scoring that as a failure would make
+       stopping a target look like giving up on it. */
+    const mondays = [...new Set(keys.map((k) => keyOf(startOfWeek(parseKey(k)))))]
+      .filter((m) => runsOn(t, keyOf(addDays(parseKey(m), 6))));
     const done = mondays.filter((m) => progress(t, m, log).met).length;
     return { n: mondays.length, done, pct: mondays.length ? done / mondays.length : 0, unit: "weeks" };
   }
@@ -242,14 +288,21 @@ export function describe(t) {
       ? ` on ${t.days.slice().sort((a, b) => a - b).map((d) => DOW[d]).join(", ")}`
       : "";
 
+  // "Every day" is only true of a target with no end; saying so about one that
+  // stopped in March is the sentence being wrong rather than merely terse.
+  const end = endOf(t);
+  const ends = end
+    ? `${hasEnded(t) ? ", ended " : ", until "}${parseKey(end).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+    : "";
+
   if (t.period === "week") {
-    if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a week`;
+    if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a week${ends}`;
     const base = t.kind === "tick" ? `${fmtNum(t.goal)}× a week` : `At least ${fmtNum(t.goal)}${unit} a week`;
-    return hasTypes(t) ? `${base} · ${t.types.length} types` : base;
+    return hasTypes(t) ? `${base} · ${t.types.length} types${ends}` : `${base}${ends}`;
   }
-  if (t.kind === "tick") return `Every day${days}`;
-  if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a day${days}`;
-  return `At least ${fmtNum(t.goal)}${unit} a day${days}`;
+  if (t.kind === "tick") return `Every day${days}${ends}`;
+  if (t.dir === "at_most") return `No more than ${fmtNum(t.goal)}${unit} a day${days}${ends}`;
+  return `At least ${fmtNum(t.goal)}${unit} a day${days}${ends}`;
 }
 
 /* ------------------------------------------------------------ mutations --
@@ -337,14 +390,20 @@ export function planEntry(t, dowIndex) {
 
 /* What the plan asks of one target on one particular date.
 
-   Two things can say: the target's own weekly rhythm, which repeats forever,
-   and an override for that single date. The override wins — including when it
-   says no, which is how a week you are away can differ from every other week
-   without disturbing the rhythm you keep the rest of the time.
+   Two things can say: the target's own weekly rhythm, which repeats until its
+   end date, and an override for that single date. The override wins —
+   including when it says no, which is how a week you are away can differ from
+   every other week without disturbing the rhythm you keep the rest of the
+   time.
 
    `source` says which answered, so the interface can be honest about whether
    changing something affects one week or all of them. */
 export function planFor(t, dayKey, plans) {
+  // An end date outranks both. It is the one answer that is about whether the
+  // target exists on that date at all, so a one-off override left behind past
+  // the end cannot quietly resurrect it.
+  if (!runsOn(t, dayKey)) return { planned: false, types: [], source: "ended" };
+
   const override = ((plans || {})[dayKey] || {})[t.id];
 
   if (override === false) return { planned: false, types: [], source: "override" };

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   The document as four tabs of a spreadsheet, and back.
+   The document as six tabs of a spreadsheet, and back.
 
    Pure functions, no network — which is what lets the round trip be tested
    properly, because this is the layer where data gets lost if anything is
@@ -7,9 +7,11 @@
 
      Categories  id · name · emoji · colour · order
      Targets     id · category · name · kind · direction · period · goal ·
-                 unit · step · days · order · archived
+                 unit · step · days · planned · until · order · archived
      Types       one row per kind, with its weekly minimum and planned days
      Log         one row per date, one column per target
+     Plan        one row per date-specific decision, including the noes
+     Settings    one row per setting
 
    Two principles throughout:
 
@@ -73,11 +75,34 @@ export function daysIn(v) {
   return out.length ? [...new Set(out)].sort((a, b) => a - b) : [...ALL_DAYS];
 }
 
+/* The last date a target runs, or "" for one that runs indefinitely.
+
+   Written as a plain YYYY-MM-DD string, and RAW input means Sheets stores that
+   string rather than converting it. Someone editing the cell by hand in Sheets
+   will get a real date though, which comes back as a serial number counting
+   from 1899-12-30 — so that is read too, rather than being discarded as
+   unparseable and silently un-ending the target. */
+export function untilIn(v) {
+  const t = norm(v);
+  if (!t) return "";
+  if (isDateKey(t)) return t;
+
+  const serial = Number(t);
+  if (Number.isFinite(serial) && serial > 0) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(t);
+  if (isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+}
+
 /* --------------------------------------------------------------- headers -- */
 
 export const CAT_HEAD = ["id", "name", "emoji", "colour", "order"];
 export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period",
-                         "goal", "unit", "step", "days", "planned", "order", "archived"];
+                         "goal", "unit", "step", "days", "planned", "until", "order", "archived"];
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
 export const SETTINGS_HEAD = ["setting", "value"];
 export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
@@ -99,6 +124,7 @@ export function targetsOut(doc) {
     // A typed target's plan lives per type in the Types tab; this column is for
     // the rest, where the plan is only ever "which days I mean to do this".
     (t.types || []).length ? "" : plannedOut(t),
+    t.until || "",
     t.order, t.archived ? "TRUE" : "FALSE",
   ])];
 }
@@ -216,54 +242,91 @@ export const docToSheets = (doc) => ({
 
 /* ------------------------------------------------------------------- in -- */
 
-/* Rebuilds the document from the four tabs. Anything unreadable is skipped,
+/* Finds columns by their header rather than by counting from the left.
+
+   A spreadsheet is a document somebody can edit, and a format grows: a column
+   is inserted, or the version that wrote the file knew one fewer column than
+   the version reading it. Counting positions turns either into silent
+   corruption. It already did once — a `planned` column was added between
+   `days` and `order`, so in a sheet written before it every target's `order`
+   was read as its plan, and a target ordered third came back planned every
+   Thursday.
+
+   Reading by name costs one lookup and makes the format additive: an unknown
+   column is ignored, a missing one reads as absent, and neither disturbs the
+   columns either side. The canonical order is still the fallback, for a sheet
+   whose header row has been deleted or overwritten. */
+function reader(head, canonical) {
+  const fallback = {};
+  canonical.forEach((name, i) => { fallback[lower(name)] = i; });
+
+  const found = {};
+  (head || []).forEach((cell, i) => {
+    const name = lower(cell);
+    if (name && found[name] === undefined) found[name] = i;
+  });
+
+  // Two recognised headers is enough to trust the row; fewer and it is
+  // likelier to be data than a header, so fall back to position.
+  const known = canonical.filter((n) => found[lower(n)] !== undefined).length;
+  const at = known >= 2 ? found : fallback;
+  return (row, name) => (at[lower(name)] === undefined ? undefined : row[at[lower(name)]]);
+}
+
+/* Rebuilds the document from the six tabs. Anything unreadable is skipped,
    never thrown — one mangled row must not cost you the other three hundred. */
 export function sheetsToDoc(tabs, base = {}) {
   const rows = (name) => (tabs[name] || []).slice(1).filter((r) => r && norm(r[0]));
+  const head = (name) => (tabs[name] || [])[0];
 
+  const cat = reader(head(TABS.CATS), CAT_HEAD);
   const categories = rows(TABS.CATS).map((r, i) => ({
-    id: norm(r[0]),
-    name: norm(r[1]) || "Untitled",
-    emoji: norm(r[2]) || "⭐",
-    color: norm(r[3]) || "#3F7D5B",
-    order: num(r[4], i),
+    id: norm(cat(r, "id")),
+    name: norm(cat(r, "name")) || "Untitled",
+    emoji: norm(cat(r, "emoji")) || "⭐",
+    color: norm(cat(r, "colour")) || "#3F7D5B",
+    order: num(cat(r, "order"), i),
   }));
 
   const byCatName = {};
   categories.forEach((c) => { byCatName[lower(c.name)] = c.id; });
 
+  const tgt = reader(head(TABS.TARGETS), TGT_HEAD);
   const targets = rows(TABS.TARGETS).map((r, i) => {
-    const catId = byCatName[lower(r[1])] || norm(r[1]);
+    const catName = tgt(r, "category");
+    const catId = byCatName[lower(catName)] || norm(catName);
     return {
-      id: norm(r[0]),
+      id: norm(tgt(r, "id")),
       catId,
-      name: norm(r[2]) || "Untitled",
-      kind: parseKind(r[3]),
-      dir: parseDir(r[4]),
-      period: parsePeriod(r[5]),
-      goal: num(r[6], 1) || 1,
-      unit: norm(r[7]),
-      step: num(r[8], 1) || 1,
-      days: daysIn(r[9]),
-      order: num(r[11], i),
-      archived: bool(r[12]),
+      name: norm(tgt(r, "name")) || "Untitled",
+      kind: parseKind(tgt(r, "kind")),
+      dir: parseDir(tgt(r, "direction")),
+      period: parsePeriod(tgt(r, "period")),
+      goal: num(tgt(r, "goal"), 1) || 1,
+      unit: norm(tgt(r, "unit")),
+      step: num(tgt(r, "step"), 1) || 1,
+      days: daysIn(tgt(r, "days")),
+      until: untilIn(tgt(r, "until")),
+      order: num(tgt(r, "order"), i),
+      archived: bool(tgt(r, "archived")),
       types: [],
-      plan: planIn(r[10]),
+      plan: planIn(tgt(r, "planned")),
     };
   }).filter((t) => categories.some((c) => c.id === t.catId));
 
   const byId = {};
   targets.forEach((t) => { byId[t.id] = t; });
 
+  const typ = reader(head(TABS.TYPES), TYPE_HEAD);
   rows(TABS.TYPES).forEach((r) => {
-    const t = byId[norm(r[0])];
+    const t = byId[norm(typ(r, "targetId"))];
     if (!t) return;
-    const id = norm(r[2]) || `ty_${lower(r[3])}`;
-    const name = norm(r[3]);
+    const name = norm(typ(r, "type"));
     if (!name) return;
-    t.types.push({ id, name, goal: num(r[4], 0) });
+    const id = norm(typ(r, "typeId")) || `ty_${lower(name)}`;
+    t.types.push({ id, name, goal: num(typ(r, "perWeek"), 0) });
     ALL_DAYS.forEach((d) => {
-      if (!bool(r[5 + d])) return;
+      if (!bool(typ(r, DOW[d]))) return;
       // A typed target's plan is per type, so a whole-target flag read from the
       // Targets tab is replaced rather than added to.
       const current = Array.isArray(t.plan[d]) ? t.plan[d] : [];

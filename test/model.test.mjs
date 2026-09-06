@@ -452,5 +452,59 @@ console.log("\n20. planning one particular week without disturbing the rhythm");
      M.planFor(str, wed, M.setPlanOverride({}, str, wed, [])).planned, false);
 }
 
+console.log("\n21. a recurring target can be given an end date");
+{
+  const ended   = { ...T.walk, until: K(-3) };   // stopped three days ago
+  const ending  = { ...T.walk, until: K(+3) };   // stops in three days
+  const forever = { ...T.walk };
+
+  eq("no end reads as none", M.endOf(forever), "");
+  eq("an end date is read back", M.endOf(ending), K(3));
+  eq("junk is not an end date", M.endOf({ ...T.walk, until: "next tuesday" }), "");
+  eq("a past end has ended", M.hasEnded(ended), true);
+  eq("a future end has not", M.hasEnded(ending), false);
+  eq("nor has no end at all", M.hasEnded(forever), false);
+
+  eq("set", M.endOf(M.setEnd(forever, K(5))), K(5));
+  eq("and cleared", M.endOf(M.setEnd(ending, "")), "");
+  eq("clearing rejects half-typed dates", M.endOf(M.setEnd(ending, "2026-1")), "");
+
+  // The end date is inclusive: the last day still counts.
+  eq("runs on its last day", M.runsOn(ending, K(3)), true);
+  eq("but not the day after", M.runsOn(ending, K(4)), false);
+  eq("no end runs on any day", M.runsOn(forever, K(400)), true);
+
+  eq("applies before the end", M.appliesOn(ending, TODAY), true);
+  eq("not after it", M.appliesOn(ended, TODAY), false);
+
+  // It outranks a one-off override, so a stale plan cannot resurrect it.
+  const stale = M.setPlanOverride({}, ended, TODAY, true);
+  eq("an override past the end does not revive it", M.planFor(ended, TODAY, stale).planned, false);
+  eq("and says why", M.planFor(ended, TODAY, stale).source, "ended");
+
+  // It drops out of today's score rather than counting as a miss.
+  const score = M.dayScore(TODAY, [T.steps, ended], {});
+  eq("an ended target is not due today", score.due, 1);
+
+  // History is untouched: the days it did run still count.
+  const log = { [K(-5)]: { walk: 30 }, [K(-4)]: { walk: 30 }, [K(-1)]: { walk: 30 } };
+  const keys = [K(-5), K(-4), K(-3), K(-2), K(-1), TODAY];
+  eq("only the days it ran are scheduled", M.targetStats(ended, keys, log).n, 3);
+  eq("and those it met still count", M.targetStats(ended, keys, log).done, 2);
+  eq("with no end, every day is scheduled", M.targetStats(forever, keys, log).n, 6);
+
+  // A weekly target ending mid-week does not get judged on the stub.
+  const weekly = { ...T.gym, until: M.keyOf(M.addDays(M.parseKey(monday), 2)) };  // ends Wednesday
+  eq("a part-week is not counted", M.targetStats(weekly, thisWeek, {}).n, 0);
+  const lastWeek = M.keyOf(M.addDays(M.parseKey(monday), -7));
+  eq("the full weeks before it are",
+     M.targetStats({ ...T.gym, until: M.keyOf(M.addDays(M.parseKey(monday), -1)) },
+                   [...M.weekKeys(M.parseKey(lastWeek)), ...thisWeek], {}).n, 1);
+
+  eq("describe says when it ends", M.describe(ending).includes("until"), true);
+  eq("and when it ended", M.describe(ended).includes("ended"), true);
+  eq("and stays quiet otherwise", M.describe(forever).includes("until"), false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

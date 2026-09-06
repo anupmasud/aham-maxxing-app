@@ -30,7 +30,7 @@ export default function Setup({
     update((d) => ({
       ...d,
       targets: [...d.targets, {
-        ...s, id: M.uid("t_"), catId, archived: false,
+        ...s, id: M.uid("t_"), catId, archived: false, until: "",
         days: [...M.ALL_DAYS], order: nextOrder(d.targets.filter((t) => t.catId === catId)),
       }],
     }));
@@ -78,7 +78,10 @@ export default function Setup({
                 <View style={[S.row, { paddingVertical: 10, paddingHorizontal: 13, gap: 8 }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={{
-                      fontSize: 14, color: t.archived ? C.ink3 : C.ink,
+                      // Struck through only when paused. A target that reached
+                      // its end date finished rather than being abandoned, so
+                      // it dims without being crossed out.
+                      fontSize: 14, color: t.archived || M.hasEnded(t) ? C.ink3 : C.ink,
                       textDecorationLine: t.archived ? "line-through" : "none",
                     }}>{t.name}</Text>
                     <Text style={[S.tiny, { marginTop: 2 }]}>
@@ -436,6 +439,56 @@ function Reminders({ doc, update }) {
 
 /* --------------------------------------------------------- target editor -- */
 
+/* An end date for a target that repeats.
+
+   Typed rather than picked from a calendar: there is no date picker that
+   behaves the same in a browser and on the phone without pulling in a native
+   module, and the presets answer almost every real case — the field is there
+   for the one that needs a particular day.
+
+   What you type is kept exactly as typed and only interpreted when you save,
+   so a half-finished date is never guessed at. The line underneath says what
+   the app has understood, which is the part worth being sure about. */
+function EndDate({ form, set }) {
+  const typed = form.until || "";
+  const end = M.endOf(form);
+  const today = new Date();
+  const on = (d) => set({ until: M.keyOf(d) });
+
+  const echo = !typed
+    ? "No end — repeats for as long as you keep it."
+    : end
+      ? `${M.hasEnded(form) ? "Ended" : "Runs until"} ${M.parseKey(end).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${M.hasEnded(form) ? "" : ", inclusive"}.`
+      : "Not a date yet — use YYYY-MM-DD. Saving now would leave it with no end.";
+
+  return (
+    <>
+      <Text style={[S.label, { marginTop: 16 }]}>Runs until (optional)</Text>
+      <Text style={[S.tiny, { marginBottom: 2 }]}>
+        The last day this is asked of you. After it, the target stops appearing
+        and stops counting — everything you already logged stays exactly as it is.
+      </Text>
+      <View style={[S.row, { flexWrap: "wrap", marginBottom: 9 }]}>
+        <Chip label="End of this month"
+              onPress={() => on(new Date(today.getFullYear(), today.getMonth() + 1, 0))} />
+        <Chip label="In 4 weeks" onPress={() => on(M.addDays(today, 28))} />
+        <Chip label="In 3 months"
+              onPress={() => on(new Date(today.getFullYear(), today.getMonth() + 3, today.getDate()))} />
+        {!!typed && <Chip label="✕  Clear" onPress={() => set({ until: "" })} />}
+      </View>
+      <TextInput
+        style={S.input}
+        value={typed}
+        onChangeText={(v) => set({ until: v })}
+        placeholder="YYYY-MM-DD"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <Text style={[S.tiny, { marginTop: 5, color: typed && !end ? C.warn : C.ink3 }]}>{echo}</Text>
+    </>
+  );
+}
+
 function TargetEditor({ state, doc, update, onClose, nextOrder }) {
   const existing = state?.target;
   const [form, setForm] = useState(null);
@@ -446,7 +499,7 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
     setSeeded(key);
     setForm(existing ? { ...existing } : {
       name: "", catId: state.catId, kind: "tick", dir: "at_least", period: "day",
-      goal: 1, unit: "", step: 1, days: [...M.ALL_DAYS], archived: false,
+      goal: 1, unit: "", step: 1, days: [...M.ALL_DAYS], until: "", archived: false,
     });
   }
   if (!state && seeded !== null) setSeeded(null);
@@ -476,6 +529,9 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       step: Math.max(0.01, Number(form.step) || 1),
       unit: form.kind === "amount" ? form.unit : "",
       days: form.period === "week" ? [...M.ALL_DAYS] : (form.days.length ? form.days : [...M.ALL_DAYS]),
+      // Whatever is in the box is only a date if it reads as one; anything
+      // else means no end rather than an end nobody can interpret.
+      until: M.endOf(form),
       plan: types.length ? plan : (form.plan || {}),
     };
     update((d) => existing
@@ -603,6 +659,8 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
           </View>
         </>
       )}
+
+      <EndDate form={form} set={set} />
 
       <Text style={[S.tiny, { marginTop: 12 }]}>{M.describe({ ...form, goal: Number(form.goal) || 1 })}</Text>
 

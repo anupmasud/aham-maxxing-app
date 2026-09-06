@@ -12,6 +12,11 @@ const read = (f) => fs.readFileSync(path.join(dir, "..", "src", "model", f), "ut
 const source = read("targets.js") + "\n" + read("sheetFormat.js").replace(/^import .*$/m, "");
 const M = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
 
+/* Columns are addressed by header name here for the same reason the reader
+   looks them up that way: a test that counts from the left has to be edited
+   every time the format grows, and quietly asserts the wrong cell if it is not. */
+const col = (name) => M.TGT_HEAD.indexOf(name);
+
 let pass = 0, fail = 0;
 const eq = (label, got, want) => {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -30,17 +35,17 @@ const doc = {
   ],
   targets: [
     { id: "t_water", catId: "c_move", name: "Water", kind: "amount", dir: "at_least",
-      period: "day", goal: 3, unit: "L", step: 0.25, days: [0,1,2,3,4,5,6], order: 0,
+      period: "day", goal: 3, unit: "L", step: 0.25, days: [0,1,2,3,4,5,6], until: "", order: 0,
       archived: false, types: [], plan: {} },
     { id: "t_str", catId: "c_move", name: "Strength training", kind: "tick", dir: "at_least",
-      period: "week", goal: 5, unit: "", step: 1, days: [0,1,2,3,4,5,6], order: 1, archived: false,
+      period: "week", goal: 5, unit: "", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 1, archived: false,
       types: [{ id: "ty_lymph", name: "Lymph drainage", goal: 5 }, { id: "ty_arms", name: "Arms", goal: 2 }],
       plan: { 0: ["ty_lymph", "ty_arms"], 2: ["ty_lymph"] } },
     { id: "t_floss", catId: "c_move", name: "Floss", kind: "tick", dir: "at_least",
-      period: "day", goal: 1, unit: "", step: 1, days: [0,2,4], order: 2, archived: true,
-      types: [], plan: {} },
+      period: "day", goal: 1, unit: "", step: 1, days: [0,2,4], until: "2026-12-31", order: 2,
+      archived: true, types: [], plan: {} },
     { id: "t_booze", catId: "c_limits", name: "Alcohol", kind: "amount", dir: "at_most",
-      period: "week", goal: 6, unit: "units", step: 1, days: [0,1,2,3,4,5,6], order: 3,
+      period: "week", goal: 6, unit: "units", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 3,
       archived: false, types: [], plan: {} },
   ],
   log: {
@@ -55,11 +60,13 @@ console.log("\n1. what the tabs look like");
   const tabs = M.docToSheets(doc);
   eq("six tabs", Object.keys(tabs).sort(),
      ["Categories", "Log", "Plan", "Settings", "Targets", "Types"]);
-  eq("targets carry the category by name", tabs.Targets[1][1], "Movement");
-  eq("restricted days written as names", tabs.Targets[3][9], "Mon, Wed, Fri");
-  eq("every day written as All", tabs.Targets[1][9], "All");
-  eq("archived flagged", tabs.Targets[3][12], "TRUE");
-  eq("an unplanned target leaves the column blank", tabs.Targets[1][10], "");
+  eq("targets carry the category by name", tabs.Targets[1][col("category")], "Movement");
+  eq("restricted days written as names", tabs.Targets[3][col("days")], "Mon, Wed, Fri");
+  eq("every day written as All", tabs.Targets[1][col("days")], "All");
+  eq("archived flagged", tabs.Targets[3][col("archived")], "TRUE");
+  eq("an end date written as a date key", tabs.Targets[3][col("until")], "2026-12-31");
+  eq("no end leaves the column blank", tabs.Targets[1][col("until")], "");
+  eq("an unplanned target leaves the column blank", tabs.Targets[1][col("planned")], "");
   eq("a type row carries its weekly minimum", tabs.Types[1].slice(0, 5),
      ["t_str", "Strength training", "ty_lymph", "Lymph drainage", 5]);
   eq("the plan is days beside the type", tabs.Types[1].slice(5), ["TRUE", "", "TRUE", "", "", "", ""]);
@@ -114,14 +121,14 @@ console.log("\n3. it survives the things a person does to a spreadsheet");
 
   // Renaming a target in the sheet renames it in the app, not orphans it.
   const renamed = JSON.parse(JSON.stringify(tabs));
-  renamed.Targets[1][2] = "Hydration";
+  renamed.Targets[1][col("name")] = "Hydration";
   const r1 = M.sheetsToDoc(renamed, doc);
   eq("rename follows the id", r1.targets.find((t) => t.id === "t_water").name, "Hydration");
   eq("its history is intact", r1.log["2026-09-01"].t_water, 2.75);
 
   // Editing a goal by hand takes effect.
   const regoaled = JSON.parse(JSON.stringify(tabs));
-  regoaled.Targets[1][6] = 4;
+  regoaled.Targets[1][col("goal")] = 4;
   eq("goal edited by hand", M.sheetsToDoc(regoaled, doc).targets[0].goal, 4);
 
   // A junk row is skipped, not fatal.
@@ -157,7 +164,7 @@ console.log("\n4b. a plan for a target without types");
   };
   const tabs = M.docToSheets(planned);
   const row = tabs.Targets.find((r) => r[0] === "t_water");
-  eq("written as weekday names", row[10], "Mon, Wed, Fri");
+  eq("written as weekday names", row[col("planned")], "Mon, Wed, Fri");
 
   const back = M.sheetsToDoc(tabs, planned);
   eq("read back", back.targets.find((t) => t.id === "t_water").plan, { 0: true, 2: true, 4: true });
@@ -211,6 +218,78 @@ console.log("\n4. a kind renamed in the sheet keeps its history");
   // The log cell still says the old name, so that entry cannot be matched —
   // the count is what survives, and the app must not crash on it.
   eq("unmatched kind does not lose the day", Object.keys(back.log).includes("2026-09-01"), true);
+}
+
+console.log("\n7. columns are found by name, not by counting from the left");
+{
+  /* The sheet as it was written before the `planned` and `until` columns
+     existed. Read positionally, `order` landed where `planned` now sits and
+     every target came back with a plan derived from its sort order — a target
+     ordered third was planned every Thursday, and one ordered seventh every
+     day of the week. This is that sheet. */
+  const old12 = {
+    Categories: [["id", "name", "emoji", "colour", "order"],
+                 ["c_move", "Movement", "🚶", "#3F7D5B", 0]],
+    Targets: [
+      ["id", "category", "name", "kind", "direction", "period",
+       "goal", "unit", "step", "days", "order", "archived"],
+      ["t_steps", "Movement", "Steps", "amount", "at least", "day", 8000, "steps", 500, "All", 3, "FALSE"],
+      ["t_msg", "Movement", "Message a friend", "tick", "at least", "day", 1, "", 1, "All", 7, "TRUE"],
+    ],
+    Types: [], Log: [], Plan: [], Settings: [],
+  };
+  const back = M.sheetsToDoc(old12);
+  const steps = back.targets.find((t) => t.id === "t_steps");
+  const msg = back.targets.find((t) => t.id === "t_msg");
+
+  eq("a missing column reads as absent, not as its neighbour", steps.plan, {});
+  eq("nor does the seventh become every day", msg.plan, {});
+  eq("order is still the order", steps.order, 3);
+  eq("and archived is still archived", msg.archived, true);
+  eq("with no end date invented", steps.until, "");
+
+  // Columns moved around by hand, and one unknown column added.
+  const shuffled = {
+    ...old12,
+    Targets: [
+      ["archived", "name", "note", "id", "category", "days", "period", "direction", "kind", "goal", "unit", "step", "order"],
+      ["FALSE", "Steps", "ignore me", "t_steps", "Movement", "Mon, Fri", "day", "at least", "amount", 8000, "steps", 500, 3],
+    ],
+  };
+  const moved = M.sheetsToDoc(shuffled).targets[0];
+  eq("a reordered header still reads", moved.name, "Steps");
+  eq("including the days", moved.days, [0, 4]);
+  eq("and an unknown column is ignored", moved.goal, 8000);
+
+  /* A header row overwritten with data. Row one is always spent as the header
+     whatever it holds, so that row is lost either way — what the fallback
+     saves is every row beneath it, which would otherwise be read through a
+     header of garbage and come back as nothing recognisable. */
+  const headless = {
+    ...old12,
+    Targets: [
+      ["t_steps", "Movement", "Steps", "amount", "at least", "day", 8000, "steps", 500, "All", "", "", 3, "FALSE"],
+      ["t_water", "Movement", "Water", "amount", "at least", "day", 3, "L", 0.25, "All", "", "", 4, "FALSE"],
+    ],
+  };
+  const fallen = M.sheetsToDoc(headless).targets;
+  eq("the rows below a lost header are still read", fallen.length, 1);
+  eq("in the canonical column order", fallen[0].name, "Water");
+  eq("goal and all", fallen[0].goal, 3);
+}
+
+console.log("\n8. end dates survive the round trip");
+{
+  eq("a date key passes through", M.untilIn("2026-12-31"), "2026-12-31");
+  eq("blank means no end", M.untilIn(""), "");
+  eq("so does nonsense", M.untilIn("whenever"), "");
+  // Editing the cell by hand in Sheets turns it into a serial number.
+  eq("a Sheets date serial is understood", M.untilIn(46387), "2026-12-31");
+  eq("as is a written-out date", M.untilIn("31 December 2026"), "2026-12-31");
+
+  const back = M.sheetsToDoc(M.docToSheets(doc), doc);
+  eq("the end date comes back", back.targets.find((t) => t.id === "t_floss").until, "2026-12-31");
+  eq("and the others have none", back.targets.find((t) => t.id === "t_water").until, "");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

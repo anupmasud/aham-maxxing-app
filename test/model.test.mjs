@@ -234,5 +234,35 @@ console.log("\n12. the weekly plan");
   eq("but it is still planned", M.planStatus(futurePlan, future, {}).planned, ["arms"]);
 }
 
+console.log("\n13. hit rates are measured in each target's own unit");
+{
+  const week = thisWeek;                       // Mon..Sun of the current week
+  const log = {};
+  // Walk met on 3 of the 7 days; steps on 1.
+  [0, 1, 2].forEach((i) => { log[week[i]] = { ...(log[week[i]] || {}), walk: 30 }; });
+  log[week[0]] = { ...log[week[0]], steps: 9000 };
+  // Strength met this week (4 sessions).
+  [0, 1, 2, 3].forEach((i) => { log[week[i]] = { ...(log[week[i]] || {}), gym: true }; });
+
+  eq("a daily target counts days", M.targetStats(T.walk, week, log), { n: 7, done: 3, pct: 3 / 7, unit: "days" });
+  eq("a weekly target counts weeks", M.targetStats(T.gym, week, log), { n: 1, done: 1, pct: 1, unit: "weeks" });
+  eq("scheduled days only", M.targetStats(T.floss, week, log).n, 3);   // Mon, Wed, Fri
+
+  const daily = M.periodStats([T.walk, T.steps, T.gym, T.booze], week, log, "day");
+  eq("daily pooled across targets", { n: daily.n, done: daily.done, unit: daily.unit },
+     { n: 14, done: 4, unit: "days" });                                 // 7+7 due, 3+1 met
+  eq("ceilings excluded from the rate", daily.targets, 2);
+
+  const weekly = M.periodStats([T.walk, T.steps, T.gym, T.booze], week, log, "week");
+  eq("weekly pooled in weeks", { n: weekly.n, done: weekly.done, unit: weekly.unit },
+     { n: 1, done: 1, unit: "weeks" });
+
+  // Pooling, not an average of daily percentages: a light day must not weigh
+  // the same as a heavy one.
+  const lopsided = { [week[0]]: { steps: 9000 } };                      // Mon: steps only
+  const pooled = M.periodStats([T.walk, T.steps], week, lopsided, "day");
+  eq("one hit out of fourteen target-days", Math.round(pooled.pct * 100), 7);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

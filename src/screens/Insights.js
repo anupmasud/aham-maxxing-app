@@ -45,26 +45,18 @@ export default function Insights({ doc, setDay, setTab }) {
     );
   }
 
-  const stat = (t) => {
-    if (t.period === "week") {
-      const mondays = [...new Set(keys.map((k) => M.keyOf(M.startOfWeek(M.parseKey(k)))))];
-      const done = mondays.filter((m) => M.progress(t, m, log).met).length;
-      return { n: mondays.length, done, pct: mondays.length ? done / mondays.length : 0, unit: "weeks" };
-    }
-    const sched = keys.filter((k) => M.appliesOn(t, k));
-    const done = sched.filter((k) => M.progress(t, k, log).met).length;
-    return { n: sched.length, done, pct: sched.length ? done / sched.length : 0, unit: "days" };
-  };
+  const stat = (t) => M.targetStats(t, keys, log);
+
+  /* Daily targets are counted in days and weekly ones in weeks, never mixed:
+     dividing a count of days by a count of weeks is not a percentage of
+     anything. */
+  const daily = M.periodStats(targets, keys, log, "day");
+  const weekly = M.periodStats(targets, keys, log, "week");
 
   const scores = keys.map((k) => M.dayScore(k, targets, log)).filter((s) => s.due > 0);
-  const avg = scores.length ? scores.reduce((a, s) => a + s.pct, 0) / scores.length : 0;
   const perfect = scores.filter((s) => s.pct >= 1 && s.broken === 0).length;
 
-  // A ceiling's "streak" is only days you have not broken it, which is not the
-  // same kind of achievement, so the headline reports floors only.
   const floors = targets.filter((t) => t.dir === "at_least");
-  const best = floors.reduce((acc, t) => Math.max(acc, M.streak(t, log, from)), 0);
-
   const ceilings = targets.filter((t) => t.dir === "at_most");
 
   return (
@@ -73,23 +65,31 @@ export default function Insights({ doc, setDay, setTab }) {
       <RangePicker active={days} setDays={setDays} />
 
       <View style={[S.row, { gap: 10, marginBottom: 14 }]}>
-        <Stat value={`${Math.round(avg * 100)}%`} label="targets kept" />
+        {daily.targets > 0 && (
+          <Stat value={`${Math.round(daily.pct * 100)}%`}
+                label={`of ${daily.n} target-days`} />
+        )}
+        {weekly.targets > 0 && (
+          <Stat value={`${Math.round(weekly.pct * 100)}%`}
+                label={`of ${weekly.n} target-weeks`} />
+        )}
         <Stat value={perfect} label="full days" />
-        <Stat value={best} label="best streak" />
       </View>
 
       {/* by category */}
-      <Card title="By category" sub="share of targets kept">
+      {/* Averaged across the category's targets rather than pooled, because a
+          category can hold both daily and weekly targets and their counts are
+          in different units. */}
+      <Card title="By category" sub="average across its targets">
         {(doc.categories || []).slice().sort((a, b) => a.order - b.order).map((cat) => {
-          const ts = targets.filter((t) => t.catId === cat.id);
+          const ts = targets.filter((t) => t.catId === cat.id && t.dir === "at_least");
           if (!ts.length) return null;
-          const s = ts.map(stat);
-          const n = s.reduce((a, x) => a + x.n, 0);
-          const done = s.reduce((a, x) => a + x.done, 0);
+          const rates = ts.map((t) => stat(t)).filter((x) => x.n > 0);
+          const pct = rates.length ? rates.reduce((a, x) => a + x.pct, 0) / rates.length : 0;
           return (
             <BarRow key={cat.id} label={`${cat.emoji} ${cat.name}`}
                     sub={`${ts.length} target${ts.length > 1 ? "s" : ""}`}
-                    pct={n ? done / n : 0} color={cat.color} />
+                    pct={pct} color={cat.color} />
           );
         })}
       </Card>
@@ -173,7 +173,9 @@ function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
           <Text style={{ fontSize: 20, fontWeight: "700", color: C.ink }}>
             {due ? `${Math.round((done / due) * 100)}%` : "—"}
           </Text>
-          <Text style={{ fontSize: 10, color: C.ink3 }}>{due ? `${done} of ${due}` : "nothing due"}</Text>
+          <Text style={{ fontSize: 10, color: C.ink3 }}>
+            {due ? `${done}/${due} days` : "nothing due"}
+          </Text>
         </Ring>
         <View style={{ flex: 1 }}>
           <Text style={S.h2}>

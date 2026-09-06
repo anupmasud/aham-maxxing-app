@@ -179,6 +179,50 @@ export function streak(t, log, from) {
   return n;
 }
 
+/* ------------------------------------------------------------ hit rates --
+   A target is measured in its own unit: a daily target in days, a weekly one
+   in weeks. Blending the two would mean dividing a count of days by a count of
+   weeks and calling the result a percentage.                                */
+
+export function targetStats(t, keys, log) {
+  if (t.period === "week") {
+    const mondays = [...new Set(keys.map((k) => keyOf(startOfWeek(parseKey(k)))))];
+    const done = mondays.filter((m) => progress(t, m, log).met).length;
+    return { n: mondays.length, done, pct: mondays.length ? done / mondays.length : 0, unit: "weeks" };
+  }
+  const sched = keys.filter((k) => appliesOn(t, k));
+  const done = sched.filter((k) => progress(t, k, log).met).length;
+  return { n: sched.length, done, pct: sched.length ? done / sched.length : 0, unit: "days" };
+}
+
+/* Pooled across every target of one period, so each target-day (or
+   target-week) counts once.
+
+   Pooling matters. Averaging each day's percentage instead would let a Monday
+   with one target scheduled weigh as much as a Thursday with eight — so
+   missing that single Monday thing costs the same as missing eight — which is
+   not what "targets kept" sounds like it means.
+
+   Ceilings are left out: they are reported as weeks within the limit on their
+   own trend, and a limit you have merely not broken should not count as an
+   achievement here. */
+export function periodStats(targets, keys, log, period) {
+  const ts = liveTargets(targets).filter((t) => t.period === period && t.dir === "at_least");
+  let n = 0;
+  let done = 0;
+  ts.forEach((t) => {
+    const s = targetStats(t, keys, log);
+    n += s.n;
+    done += s.done;
+  });
+  return {
+    n, done,
+    pct: n ? done / n : 0,
+    unit: period === "week" ? "weeks" : "days",
+    targets: ts.length,
+  };
+}
+
 /* ----------------------------------------------------------- describing -- */
 
 /* A plain-English sentence for a target. Reading these back is the quickest

@@ -9,13 +9,17 @@ import {
   CATEGORY_COLORS, SUGGESTIONS, TEMPLATES, UNITS, addTemplateCategories, templateById,
 } from "../model/seed";
 import { guessCategory } from "../model/templates";
+import { applyImport, readImport } from "../model/csv";
 import { CONFIG } from "../config";
 
-export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut, disconnect }) {
+export default function Setup({
+  doc, update, user, folderUrl, sheetUrl, signOut, disconnect, exportCsvFile,
+}) {
   const [editTarget, setEditTarget] = useState(null);   // { target } | { catId }
   const [editCat, setEditCat] = useState(null);         // { cat } | {}
   const [confirming, setConfirming] = useState(null);   // { title, message, onConfirm }
   const [reorganising, setReorganising] = useState(false);
+  const [transferring, setTransferring] = useState(false);
 
   const cats = (doc.categories || []).slice().sort((a, b) => a.order - b.order);
   const targetsIn = (id) => (doc.targets || []).filter((t) => t.catId === id).sort((a, b) => a.order - b.order);
@@ -139,6 +143,15 @@ export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut,
         </View>
       </View>
 
+      <View style={[S.card, S.cardPad]}>
+        <Text style={[S.h2, { marginBottom: 6 }]}>Import and export</Text>
+        <Text style={S.muted}>
+          Bring history in from another habit app, or take everything out as a
+          plain CSV that anything can read.
+        </Text>
+        <Btn label="Import or export data" onPress={() => setTransferring(true)} />
+      </View>
+
       <Reminders doc={doc} update={update} />
 
       <View style={[S.card, S.cardPad]}>
@@ -174,7 +187,126 @@ export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut,
       {reorganising && (
         <Reorganise doc={doc} update={update} onClose={() => setReorganising(false)} />
       )}
+      {transferring && (
+        <Transfer doc={doc} update={update} exportCsvFile={exportCsvFile}
+                  onClose={() => setTransferring(false)} />
+      )}
     </ScrollView>
+  );
+}
+
+/* -------------------------------------------------------------- transfer --
+   Moving history in from another app, and taking it out again.
+
+   Pasting the file rather than picking it is deliberate: one code path for the
+   phone and the browser, no document-picker dependency, and no way to fail on
+   a permission for reading local files. Habit exports are small text.
+
+   Nothing is applied until it has been read and described. Importing a year of
+   somebody's history is not a thing to do silently and let them discover
+   afterwards. */
+
+function Transfer({ doc, update, exportCsvFile, onClose }) {
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [exported, setExported] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const cats = doc.categories.slice().sort((a, b) => a.order - b.order);
+  const [catId, setCatId] = useState((cats[0] || {}).id);
+
+  const read = () => {
+    setError("");
+    const result = readImport(text, doc, { defaultCatId: catId });
+    if (!result.ok) {
+      setPreview(null);
+      setError(
+        result.reason === "empty"
+          ? "Nothing to read — paste the contents of a CSV file above."
+          : "That does not look like a habit export. It needs either a date column and a habit column, or a first column of dates with a column per habit."
+      );
+      return;
+    }
+    setPreview(result);
+  };
+
+  const doExport = async () => {
+    setBusy(true); setError("");
+    try { setExported(await exportCsvFile()); }
+    catch (e) { setError(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <Sheet title="Import and export" onClose={onClose}>
+      <Text style={[S.h2, { fontSize: 15, marginBottom: 6 }]}>Take your data out</Text>
+      <Text style={S.muted}>
+        Writes a CSV beside your spreadsheet — one row per entry, with the date,
+        category, target, value and unit. Anything can read it.
+      </Text>
+      <Btn label={busy ? "Writing…" : "Export to CSV"} onPress={doExport} disabled={busy} />
+      {!!exported && (
+        <Pressable onPress={() => Linking.openURL(exported.url)} style={{ marginTop: 8 }}>
+          <Text style={{ color: C.accent, fontSize: 14 }}>Open “{exported.name}” in Drive</Text>
+        </Pressable>
+      )}
+
+      <View style={[S.rule, { marginVertical: 18 }]} />
+
+      <Text style={[S.h2, { fontSize: 15, marginBottom: 6 }]}>Bring data in</Text>
+      <Text style={S.muted}>
+        Export from your other app, open the file, and paste the whole thing here.
+        Both common shapes are understood: a date column with a habit column, or
+        a first column of dates with a column per habit.
+      </Text>
+
+      <Text style={[S.label, { marginTop: 12 }]}>New targets go in</Text>
+      <Select value={catId} onChange={setCatId}
+              options={cats.map((c) => ({ value: c.id, label: `${c.emoji}  ${c.name}` }))} />
+
+      <Text style={[S.label, { marginTop: 12 }]}>Paste the CSV</Text>
+      <TextInput
+        style={[S.input, { minHeight: 110, textAlignVertical: "top", fontSize: 12 }]}
+        multiline
+        value={text}
+        onChangeText={(v) => { setText(v); setPreview(null); }}
+        placeholder={"date,habit,value\n2026-01-01,Walk,30"}
+      />
+      <Btn label="Read it" onPress={read} />
+
+      {!!error && <Text style={S.error}>{error}</Text>}
+
+      {!!preview && (
+        <View style={[S.card, S.cardPad, { marginTop: 14 }]}>
+          <Text style={[S.h2, { fontSize: 14, marginBottom: 6 }]}>What this would add</Text>
+          <Text style={S.body}>
+            {preview.entries} entr{preview.entries === 1 ? "y" : "ies"}
+            {preview.first ? `, ${preview.first} to ${preview.last}` : ""}.
+          </Text>
+          {preview.matched.length > 0 && (
+            <Text style={[S.muted, { marginTop: 6 }]}>
+              Matched to targets you already have: {preview.matched.join(", ")}.
+            </Text>
+          )}
+          {preview.created.length > 0 && (
+            <Text style={[S.muted, { marginTop: 6 }]}>
+              New targets: {preview.created.map((t) => `${t.name} (${t.kind})`).join(", ")}.
+            </Text>
+          )}
+          <Text style={[S.tiny, { marginTop: 8 }]}>
+            Days you have already recorded are left exactly as they are — this fills
+            gaps rather than overwriting.
+          </Text>
+          <Btn primary label={`Add ${preview.entries} entries`} onPress={() => {
+            update((d) => applyImport(d, preview));
+            onClose();
+          }} />
+        </View>
+      )}
+
+      <Btn label="Close" onPress={onClose} />
+    </Sheet>
   );
 }
 

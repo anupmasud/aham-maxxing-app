@@ -240,6 +240,36 @@ export async function saveDoc(id, doc, baseModifiedTime, { force = false } = {})
   return { modifiedTime };
 }
 
+/* Writes a plain text file into the app's folder, replacing one of the same
+   name if it is already there.
+
+   Exporting this way rather than through a download or a share sheet means one
+   code path for the phone and the browser, no file-picker dependency, and the
+   result lands beside everything else instead of in whichever folder the
+   device calls Downloads. */
+export async function writeTextFile(folderId, name, text, mimeType = "text/csv") {
+  const params = new URLSearchParams({
+    q: `name = '${esc(name)}' and trashed = false and '${folderId}' in parents`,
+    spaces: "drive", fields: "files(id)", pageSize: "5",
+  });
+  const found = ((await json(`${FILES}?${params}`)).files || [])[0];
+
+  const id = found
+    ? found.id
+    : (await json(FILES, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, mimeType, parents: [folderId] }),
+      })).id;
+
+  await req(`${UPLOAD}/${id}?uploadType=media&fields=id`, {
+    method: "PATCH",
+    headers: { "Content-Type": mimeType },
+    body: text,
+  });
+  return id;
+}
+
 /* A link the user can open to see the actual file. Being able to point at
    "here is your data, in your Drive" is most of the trust this design buys. */
 export const fileUrl = (id) => `https://drive.google.com/file/d/${id}/view`;

@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CONFIG, isAllowed } from "../config";
 import * as Auth from "../google/auth";
 import * as Drive from "../google/drive";
+import { exportCsv } from "../model/csv";
 import * as Sheets from "../google/sheets";
 
 const SAVE_DELAY = 1200;
@@ -217,6 +218,15 @@ export function useCloudDoc() {
      stops offering, so an ordinary sign-in will not get the scope back. */
   const grantAccess = useCallback(() => signIn({ force: true }), [signIn]);
 
+  /* Writes a CSV of everything logged into the app's own Drive folder, and
+     hands back a link to it. */
+  const exportCsvFile = useCallback(async () => {
+    if (!latest.current || !folderId.current) throw new Error("Nothing to export yet");
+    const name = `${CONFIG.sheetName || "AhamMaxxing"} export.csv`;
+    const id = await Drive.writeTextFile(folderId.current, name, exportCsv(latest.current));
+    return { name, url: Drive.fileUrl(id) };
+  }, []);
+
   /* Creates the spreadsheet in the folder they chose. */
   const createIn = useCallback(async (path, template) => {
     if (!user) return;
@@ -268,7 +278,7 @@ export function useCloudDoc() {
   return {
     user, doc, status, error, conflict,
     update, syncNow, resolveConflict,
-    signIn, signOut, disconnect, grantAccess, resetPermissions, createIn,
+    signIn, signOut, disconnect, grantAccess, resetPermissions, createIn, exportCsvFile,
     sheetUrl: fileId.current ? Sheets.sheetUrl(fileId.current) : null,
     folderUrl: folderId.current ? Drive.folderUrl(folderId.current) : null,
     configured: !!(CONFIG.iosClientId || CONFIG.webClientId),

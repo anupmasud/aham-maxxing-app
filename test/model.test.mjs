@@ -294,7 +294,15 @@ console.log("\n14. a daily tick can only ever be one");
 
 console.log("\n15. starting sets");
 {
-  eq("four to choose from", M.TEMPLATES.map((t) => t.id), ["default", "niyamas", "franklin", "dinacharya"]);
+  eq("five to choose from", M.TEMPLATES.map((t) => t.id),
+     ["default", "niyamas", "franklin", "health", "dinacharya"]);
+
+  // The Health set exists to line up with Apple's own categories, so its names
+  // must stay as Apple writes them.
+  eq("health names match Apple's Browse categories",
+     M.templateById("health").categories.map((c) => c.name),
+     ["Activity", "Nutrition", "Sleep", "Mindfulness", "Mental Wellbeing",
+      "Medications", "Body Measurements"]);
 
   M.TEMPLATES.forEach((t) => {
     const doc = M.docFromTemplate(t.id);

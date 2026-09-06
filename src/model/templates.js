@@ -88,6 +88,38 @@ const DINACHARYA_CATEGORIES = [
     match: ["sleep", "slept", "lights out", "screens", "bed", "evening", "night", "phone", "wind"] },
 ];
 
+/* ------------------------------------------------------------ apple health --
+   Named after the categories in Apple Health's Browse tab, because it is the
+   one taxonomy in this space that is actually standard — and because HealthKit
+   was the reason to build a native app at all. When steps and sleep start
+   filling themselves in, a category called Activity mapping to Apple's
+   Activity is obvious rather than arbitrary.
+
+   Only the categories describing things you *do* are here. Heart, Respiratory,
+   Vitals, Hearing, Mobility and Cycle Tracking are readings a device takes,
+   not targets you can hit, and a habit tracker has nothing useful to say about
+   them.                                                                      */
+
+const HEALTH_CATEGORIES = [
+  { id: "c_ah_activity", name: "Activity", emoji: "🏃", color: "#3F7D5B",
+    match: ["step", "walk", "run", "cycle", "swim", "exercise", "workout", "strength", "training",
+            "yoga", "stretch", "move", "stand", "distance", "physio", "core", "body"] },
+  { id: "c_ah_nutrition", name: "Nutrition", emoji: "🥗", color: "#5E8C3F",
+    match: ["water", "protein", "veg", "fruit", "meal", "breakfast", "dinner", "supper", "eat",
+            "food", "calorie", "caffeine", "alcohol", "sugar", "dessert", "meat", "fish", "takeaway"] },
+  { id: "c_ah_sleep", name: "Sleep", emoji: "🌙", color: "#4A5F9E",
+    match: ["sleep", "slept", "bed", "lights out", "nap", "wake", "screens"] },
+  { id: "c_ah_mindfulness", name: "Mindfulness", emoji: "🧘", color: "#7A5EA8",
+    match: ["meditat", "mindful", "breath", "pranayama", "still", "quiet"] },
+  { id: "c_ah_mental", name: "Mental Wellbeing", emoji: "💚", color: "#C1663F",
+    match: ["mood", "journal", "gratitude", "good things", "daylight", "outdoors", "friend",
+            "family", "call", "message", "read", "spanish", "language", "art", "paint", "record"] },
+  { id: "c_ah_medications", name: "Medications", emoji: "💊", color: "#2F6D8C",
+    match: ["medic", "vitamin", "supplement", "pill", "dose"] },
+  { id: "c_ah_body", name: "Body Measurements", emoji: "⚖️", color: "#8C6D2F",
+    match: ["weight", "waist", "measure", "bmi", "skincare", "mask", "face", "floss", "shower"] },
+];
+
 /* ------------------------------------------------------------- suggestions -- */
 
 const tick = (name, period = "day", goal = 1) =>
@@ -159,6 +191,30 @@ export const SUGGESTIONS = {
   c_bf_chastity:    [tick("Faithful to my own standard")],
   c_bf_humility:    [tick("Asked rather than told"), tick("Learned something from someone else")],
 
+  /* ---- apple health ---- */
+  c_ah_activity: [
+    amount("Steps", 8000, "steps", 500), amount("Exercise minutes", 30, "min", 5),
+    tick("Strength training", "week", 3), amount("Walk", 30, "min", 5),
+    tick("Stand every hour"),
+  ],
+  c_ah_nutrition: [
+    amount("Water", 2, "L", 0.25), amount("Protein", 70, "g", 10),
+    amount("Portions of veg", 5, "portions"), limit("Alcohol", 6, "units"),
+    limit("Caffeine", 2, "cups", "day"),
+  ],
+  c_ah_sleep: [
+    amount("Hours slept", 7.5, "h", 0.5), tick("In bed by 11"), tick("No screens before bed"),
+  ],
+  c_ah_mindfulness: [
+    amount("Mindful minutes", 10, "min", 5), amount("Breathwork", 5, "min"),
+  ],
+  c_ah_mental: [
+    amount("Time in daylight", 20, "min", 10), tick("Logged how I feel"),
+    tick("Journal"), tick("Spoke to someone I care about"),
+  ],
+  c_ah_medications: [tick("Medications"), tick("Vitamins")],
+  c_ah_body: [amount("Weight", 1, "times", 1, "week"), tick("Skincare")],
+
   /* ---- dinacharya ---- */
   c_din_morning: [
     tick("Up before sunrise"), tick("Warm water on waking"), tick("Tongue scraping"),
@@ -204,6 +260,13 @@ export const TEMPLATES = [
     blurb: "Benjamin Franklin ruled a grid of these in a notebook and marked a dot for every fault, giving one virtue his full attention each week. It is the same grid as the Week screen, two centuries early.",
     categories: FRANKLIN_CATEGORIES,
     starters: ["c_bf_temperance", "c_bf_order", "c_bf_industry"],
+  },
+  {
+    id: "health",
+    name: "Apple Health categories",
+    blurb: "Named after the categories in Apple Health — Activity, Nutrition, Sleep, Mindfulness and the rest. The one standard taxonomy in this space, and the one that will line up if steps and sleep ever fill themselves in.",
+    categories: HEALTH_CATEGORIES,
+    starters: ["c_ah_activity", "c_ah_nutrition"],
   },
   {
     id: "dinacharya",

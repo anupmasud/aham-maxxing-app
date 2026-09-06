@@ -44,7 +44,7 @@ export default function App() {
   const {
     user, doc, status, error, conflict, configured,
     update, syncNow, resolveConflict, signIn, signOut, disconnect,
-    grantAccess, resetPermissions, createIn, folderUrl, sheetUrl,
+    grantAccess, resetPermissions, createIn, exportCsvFile, folderUrl, sheetUrl,
   } = useCloudDoc();
   const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
   const [template, setTemplate] = useState("default");
@@ -249,7 +249,7 @@ export default function App() {
 
   const props = {
     doc, update, day, setDay, tab, setTab, user, status, error,
-    syncNow, signOut, disconnect, folderUrl, sheetUrl,
+    syncNow, signOut, disconnect, folderUrl, sheetUrl, exportCsvFile,
   };
 
   return (

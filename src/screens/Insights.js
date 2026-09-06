@@ -4,13 +4,18 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
 
-import { C, S } from "../ui/kit";
+import { C, S, Ring } from "../ui/kit";
 import * as M from "../model/targets";
 
-const RANGES = [{ d: 28, label: "4 weeks" }, { d: 84, label: "12 weeks" }, { d: 365, label: "1 year" }];
+const RANGES = [
+  { d: 0, label: "This week" },      // 0 means the current week, not a rolling window
+  { d: 28, label: "4 weeks" },
+  { d: 84, label: "12 weeks" },
+  { d: 365, label: "1 year" },
+];
 
-export default function Insights({ doc }) {
-  const [days, setDays] = useState(28);
+export default function Insights({ doc, setDay, setTab }) {
+  const [days, setDays] = useState(0);
 
   const targets = M.liveTargets(doc.targets || []);
   const log = doc.log || {};
@@ -30,6 +35,13 @@ export default function Insights({ doc }) {
       <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]}>
         <Text style={S.empty}>Add some targets in Setup and the analysis builds itself.</Text>
       </ScrollView>
+    );
+  }
+
+  if (days === 0) {
+    return (
+      <ThisWeek doc={doc} targets={targets} log={log}
+                setDays={setDays} setDay={setDay} setTab={setTab} />
     );
   }
 
@@ -57,23 +69,8 @@ export default function Insights({ doc }) {
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]}>
-      <View style={[S.row, { marginBottom: 14 }]}>
-        <Text style={[S.h1, { flex: 1 }]}>Insights</Text>
-        <View style={[S.row, { gap: 6 }]}>
-          {RANGES.map((r) => (
-            <Pressable key={r.d} onPress={() => setDays(r.d)}
-              style={{
-                paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, borderWidth: 1,
-                borderColor: days === r.d ? C.ink : C.rule,
-                backgroundColor: days === r.d ? C.ink : "transparent",
-              }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: days === r.d ? C.paper : C.ink2 }}>
-                {r.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      <Text style={[S.h1, { marginBottom: 10 }]}>Insights</Text>
+      <RangePicker active={days} setDays={setDays} />
 
       <View style={[S.row, { gap: 10, marginBottom: 14 }]}>
         <Stat value={`${Math.round(avg * 100)}%`} label="targets kept" />
@@ -140,7 +137,169 @@ export default function Insights({ doc }) {
   );
 }
 
+/* ---------------------------------------------------------- this week ----
+   The dashboard: where the current week stands, mid-week, while there is still
+   time to do something about it. Deliberately forward-looking — "2 to go, 3
+   days left" is actionable in a way that "40% kept" is not.                */
+
+function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
+  const today = M.todayKey();
+  const monday = M.startOfWeek(new Date());
+  const keys = M.weekKeys(monday);
+  const elapsed = M.dow(new Date()) + 1;        // days of this week gone, today included
+  const left = 7 - elapsed;
+
+  const openDay = (k) => { setDay(k); setTab("today"); };
+
+  /* Days so far, not the whole week: judging Wednesday against seven days
+     would make every week look like a failure until Sunday night. */
+  const past = keys.slice(0, elapsed);
+  const scores = past.map((k) => M.dayScore(k, targets, log)).filter((s) => s.due > 0);
+  const done = scores.reduce((a, s) => a + s.done, 0);
+  const due = scores.reduce((a, s) => a + s.due, 0);
+
+  const groups = (doc.categories || [])
+    .slice().sort((a, b) => a.order - b.order)
+    .map((cat) => ({ cat, rows: targets.filter((t) => t.catId === cat.id) }))
+    .filter((g) => g.rows.length);
+
+  return (
+    <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]}>
+      <Text style={[S.h1, { marginBottom: 10 }]}>This week</Text>
+      <RangePicker active={0} setDays={setDays} />
+
+      <View style={[S.card, S.cardPad, S.row, { gap: 15 }]}>
+        <Ring pct={due ? done / due : 0}>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: C.ink }}>
+            {due ? `${Math.round((done / due) * 100)}%` : "—"}
+          </Text>
+          <Text style={{ fontSize: 10, color: C.ink3 }}>{due ? `${done} of ${due}` : "nothing due"}</Text>
+        </Ring>
+        <View style={{ flex: 1 }}>
+          <Text style={S.h2}>
+            {M.parseKey(keys[0]).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+            {" – "}
+            {M.parseKey(keys[6]).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+          </Text>
+          <Text style={[S.muted, { marginTop: 3 }]}>
+            Day {elapsed} of 7{left > 0 ? ` · ${left} day${left > 1 ? "s" : ""} to go` : " · last day"}
+          </Text>
+          <View style={[S.row, { gap: 4, marginTop: 8 }]}>
+            {keys.map((k, i) => {
+              const s = M.dayScore(k, targets, log);
+              const future = M.isFuture(k);
+              return (
+                <Pressable key={k} onPress={() => openDay(k)} style={{ flex: 1, opacity: future ? 0.35 : 1 }}>
+                  <Text style={[S.tiny, { textAlign: "center", fontWeight: "700" }]}>{M.DOW_LETTER[i]}</Text>
+                  <View style={{
+                    height: 18, borderRadius: 5, marginTop: 3, backgroundColor: C.ruleSoft,
+                    overflow: "hidden", justifyContent: "flex-end",
+                    borderWidth: k === today ? 2 : 0, borderColor: C.ink,
+                  }}>
+                    <View style={{ height: `${Math.round(s.pct * 100)}%`, backgroundColor: C.good }} />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      {groups.map(({ cat, rows }) => (
+        <View key={cat.id} style={[S.card, S.cardPad]}>
+          <Text style={[S.h2, { marginBottom: 4 }]}>{cat.emoji} {cat.name}</Text>
+          {rows.map((t) => <WeekRow key={t.id} t={t} log={log} keys={keys} elapsed={elapsed} left={left} />)}
+        </View>
+      ))}
+
+      <Text style={[S.tiny, { textAlign: "center", marginTop: 4 }]}>
+        Tap any day above to log or correct it.
+      </Text>
+    </ScrollView>
+  );
+}
+
+/* One target's standing this week, phrased as what is still to do. */
+function WeekRow({ t, log, keys, elapsed, left }) {
+  const ceiling = t.dir === "at_most";
+  const today = M.todayKey();
+
+  let line, ratio, tone = C.good;
+
+  if (t.period === "week") {
+    const p = M.progress(t, today, log);
+    ratio = p.ratio;
+    if (ceiling) {
+      const remaining = M.round2(p.goal - p.total);
+      tone = p.over ? C.over : p.ratio > 0.75 ? C.warn : C.good;
+      line = p.over
+        ? `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)}${t.unit ? " " + t.unit : ""} — ${M.fmtNum(-remaining)} over`
+        : `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)}${t.unit ? " " + t.unit : ""} used · ${M.fmtNum(remaining)} left`;
+    } else {
+      const togo = Math.max(0, M.round2(p.goal - p.total));
+      line = p.met
+        ? `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} — done`
+        : `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} · ${M.fmtNum(togo)} to go, ${left} day${left === 1 ? "" : "s"} left`;
+      tone = p.met ? C.good : togo > left && left >= 0 ? C.warn : C.good;
+    }
+  } else {
+    const sched = keys.slice(0, elapsed).filter((k) => M.appliesOn(t, k));
+    const hit = sched.filter((k) => M.progress(t, k, log).met).length;
+    ratio = sched.length ? hit / sched.length : 0;
+    if (ceiling) {
+      const broken = sched.filter((k) => M.progress(t, k, log).over).length;
+      tone = broken ? C.over : C.good;
+      line = broken ? `over on ${broken} of ${sched.length} days so far` : `within limit all ${sched.length} days`;
+      ratio = sched.length ? (sched.length - broken) / sched.length : 0;
+    } else {
+      line = `${hit} of ${sched.length} day${sched.length === 1 ? "" : "s"} so far`;
+      tone = hit === sched.length ? C.good : C.ink2;
+    }
+  }
+
+  const types = M.hasTypes(t)
+    ? t.types.map((ty) => {
+        const tp = M.typeProgress(t, ty, today, log);
+        return `${ty.name} ${tp.total}${ty.goal ? "/" + ty.goal : ""}`;
+      }).join("  ·  ")
+    : null;
+
+  return (
+    <View style={{ paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.ruleSoft }}>
+      <View style={[S.row, { gap: 10 }]}>
+        <Text style={{ flex: 1, fontSize: 14, color: C.ink }} numberOfLines={1}>{t.name}</Text>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: tone }}>{line}</Text>
+      </View>
+      <View style={{ height: 5, borderRadius: 3, backgroundColor: C.ruleSoft, marginTop: 6, overflow: "hidden" }}>
+        <View style={{ height: "100%", width: `${Math.min(100, Math.round((ratio || 0) * 100))}%`, backgroundColor: tone }} />
+      </View>
+      {!!types && <Text style={[S.tiny, { marginTop: 5 }]}>{types}</Text>}
+    </View>
+  );
+}
+
 /* ------------------------------------------------------------------ bits -- */
+
+/* On its own row: four labels and a heading do not fit across a phone, and
+   squeezing them wrapped the title onto two lines. */
+const RangePicker = ({ active, setDays }) => (
+  <View style={[S.row, { gap: 6, marginBottom: 14, flexWrap: "wrap" }]}>
+    {RANGES.map((r) => {
+      const on = active === r.d;
+      return (
+        <Pressable key={r.d} onPress={() => setDays(r.d)}
+          style={{
+            paddingHorizontal: 11, paddingVertical: 6, borderRadius: 8, borderWidth: 1,
+            borderColor: on ? C.ink : C.rule, backgroundColor: on ? C.ink : "transparent",
+          }}>
+          <Text style={{ fontSize: 11.5, fontWeight: "600", color: on ? C.paper : C.ink2 }}>
+            {r.label}
+          </Text>
+        </Pressable>
+      );
+    })}
+  </View>
+);
 
 const Stat = ({ value, label }) => (
   <View style={[S.card, S.cardPad, { flex: 1, alignItems: "center", marginBottom: 0 }]}>

@@ -7,6 +7,7 @@ import { C, S, Bar, Btn, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
 import * as M from "../model/targets";
 
 const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+const fmtBrief = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
 export default function Today({ doc, update, day, setDay }) {
   const [editing, setEditing] = useState(null);   // { target, dayKey }
@@ -36,10 +37,17 @@ export default function Today({ doc, update, day, setDay }) {
       <View style={[S.row, { marginBottom: 12 }]}>
         <Arrow glyph="‹" onPress={() => setDay(M.keyOf(M.addDays(date, -1)))} />
         <View style={{ flex: 1, alignItems: "center" }}>
-          <Text style={S.h1}>
-            {diff === 0 ? "Today" : diff === -1 ? "Yesterday" : diff === 1 ? "Tomorrow" : fmtDay(date)}
+          {/* A far-off date gets the short form as its heading, because the long
+              one wraps on a phone — and the line beneath then says how far back
+              you are rather than repeating the date word for word. */}
+          <Text style={S.h1} numberOfLines={1}>
+            {diff === 0 ? "Today" : diff === -1 ? "Yesterday" : diff === 1 ? "Tomorrow" : fmtBrief(date)}
           </Text>
-          <Text style={[S.tiny, { marginTop: 2 }]}>{fmtDay(date)}</Text>
+          <Text style={[S.tiny, { marginTop: 2 }]}>
+            {Math.abs(diff) <= 1
+              ? fmtDay(date)
+              : `${-diff} days ago · ${date.toLocaleDateString(undefined, { day: "numeric", month: "long" })}`}
+          </Text>
         </View>
         <Arrow glyph="›" onPress={() => setDay(M.keyOf(M.addDays(date, 1)))} disabled={diff >= 0} />
       </View>

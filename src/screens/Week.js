@@ -8,7 +8,7 @@ import * as M from "../model/targets";
 
 const fmtShort = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
-export default function Week({ doc, update, day, setDay }) {
+export default function Week({ doc, update, day, setDay, setTab }) {
   const [monday, setMonday] = useState(M.keyOf(M.startOfWeek(M.parseKey(day))));
   const keys = M.weekKeys(M.parseKey(monday));
   const thisMonday = M.keyOf(M.startOfWeek(new Date()));
@@ -16,6 +16,11 @@ export default function Week({ doc, update, day, setDay }) {
 
   const log = doc.log || {};
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
+
+  /* Anything needing more room than a 30px cell opens that day on Today —
+     including days already past, which is how you backfill water you forgot
+     to log on Tuesday. */
+  const openDay = (k) => { setDay(k); setTab("today"); };
 
   const groups = (doc.categories || [])
     .slice().sort((a, b) => a.order - b.order)
@@ -62,7 +67,7 @@ export default function Week({ doc, update, day, setDay }) {
           </View>
 
           {rows.map((t) => (
-            <Row key={t.id} t={t} keys={keys} log={log} setLog={setLog} setDay={setDay} />
+            <Row key={t.id} t={t} keys={keys} log={log} setLog={setLog} open={openDay} />
           ))}
         </View>
       ))}
@@ -70,7 +75,7 @@ export default function Week({ doc, update, day, setDay }) {
   );
 }
 
-function Row({ t, keys, log, setLog, setDay }) {
+function Row({ t, keys, log, setLog, open }) {
   const p = M.progress(t, keys[0], log);
   const ceiling = t.dir === "at_most";
 
@@ -94,13 +99,13 @@ function Row({ t, keys, log, setLog, setDay }) {
         <Text style={{ fontSize: 10, color: goalColor, marginTop: 1 }} numberOfLines={1}>{goalLabel}</Text>
       </View>
       {keys.map((k) => (
-        <Cell key={k} t={t} dayKey={k} log={log} setLog={setLog} setDay={setDay} />
+        <Cell key={k} t={t} dayKey={k} log={log} setLog={setLog} open={open} />
       ))}
     </View>
   );
 }
 
-function Cell({ t, dayKey, log, setLog, setDay }) {
+function Cell({ t, dayKey, log, setLog, open }) {
   const applies = M.appliesOn(t, dayKey);
   const v = M.valueOn(log, t.id, dayKey);
   const future = M.isFuture(dayKey);
@@ -145,7 +150,7 @@ function Cell({ t, dayKey, log, setLog, setDay }) {
         // target here would record "one session, kind unknown" and quietly
         // throw away the detail that was the point of having types.
         if (t.kind === "tick" && !M.hasTypes(t)) setLog((l) => M.toggle(l, t, dayKey));
-        else setDay(dayKey);
+        else open(dayKey);
       }}
       style={{ flex: 1, alignItems: "center", paddingVertical: 2, opacity: future ? 0.4 : 1 }}
     >

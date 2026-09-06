@@ -45,7 +45,9 @@ export default function App() {
     update, syncNow, resolveConflict, signIn, signOut, disconnect, folderUrl, fileUrl,
   } = useCloudDoc();
 
-  const [tab, setTab] = useState("today");
+  // Opens on Insights: the first question on picking up the phone is usually
+  // "where am I this week", not "let me log something".
+  const [tab, setTab] = useState("insights");
   const [day, setDay] = useState(M.todayKey());
 
   /* Reschedule whenever the reminder settings change, or when what is still
@@ -141,7 +143,7 @@ export default function App() {
   })();
 
   const props = {
-    doc, update, day, setDay, user, status, error,
+    doc, update, day, setDay, tab, setTab, user, status, error,
     syncNow, signOut, disconnect, folderUrl, fileUrl,
   };
 

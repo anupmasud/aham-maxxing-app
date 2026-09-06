@@ -335,15 +335,53 @@ export function planEntry(t, dowIndex) {
   return { planned: false, types: [] };
 }
 
+/* What the plan asks of one target on one particular date.
+
+   Two things can say: the target's own weekly rhythm, which repeats forever,
+   and an override for that single date. The override wins — including when it
+   says no, which is how a week you are away can differ from every other week
+   without disturbing the rhythm you keep the rest of the time.
+
+   `source` says which answered, so the interface can be honest about whether
+   changing something affects one week or all of them. */
+export function planFor(t, dayKey, plans) {
+  const override = ((plans || {})[dayKey] || {})[t.id];
+
+  if (override === false) return { planned: false, types: [], source: "override" };
+  if (override === true) return { planned: true, types: [], source: "override" };
+  if (Array.isArray(override)) {
+    return { planned: override.length > 0, types: override, source: "override" };
+  }
+
+  const entry = planEntry(t, dow(parseKey(dayKey)));
+  return { ...entry, source: entry.planned ? "recurring" : "none" };
+}
+
 /* The type ids planned for a day. Empty for a target without types, which is
    why isPlannedOn exists alongside it. */
-export function plannedOn(t, dayKey) {
-  return planEntry(t, dow(parseKey(dayKey))).types;
+export function plannedOn(t, dayKey, plans) {
+  return planFor(t, dayKey, plans).types;
 }
 
 /* Whether the plan asked for this target at all on this day. */
-export function isPlannedOn(t, dayKey) {
-  return planEntry(t, dow(parseKey(dayKey))).planned;
+export function isPlannedOn(t, dayKey, plans) {
+  return planFor(t, dayKey, plans).planned;
+}
+
+/* Sets what one date asks of one target, without touching the weekly rhythm.
+   `value` may be true, false, a list of type ids, or null to drop the override
+   and fall back to whatever the rhythm says. */
+export function setPlanOverride(plans, t, dayKey, value) {
+  const next = { ...(plans || {}) };
+  const day = { ...(next[dayKey] || {}) };
+
+  if (value === null || value === undefined) delete day[t.id];
+  else if (Array.isArray(value) && !value.length) day[t.id] = false;
+  else day[t.id] = value;
+
+  if (Object.keys(day).length) next[dayKey] = day;
+  else delete next[dayKey];
+  return next;
 }
 
 /* The weekdays a target is planned for, for showing and for editing. */
@@ -362,14 +400,14 @@ export function setPlannedDay(t, dowIndex, on) {
 
 /* What the plan expected against what actually happened. A day still to come
    is never "missed" — it is simply ahead of you. */
-export function planStatus(t, dayKey, log) {
-  const planned = plannedOn(t, dayKey);
+export function planStatus(t, dayKey, log, plans) {
+  const planned = plannedOn(t, dayKey, plans);
   const done = typesOn(log, t.id, dayKey);
 
   // Without types there is nothing to list, so the question is simply whether
   // the day was planned and whether anything was logged against it.
   if (!hasTypes(t)) {
-    const asked = isPlannedOn(t, dayKey);
+    const asked = isPlannedOn(t, dayKey, plans);
     const did = valueOn(log, t.id, dayKey) > 0;
     return {
       planned: [], done: [], kept: [],

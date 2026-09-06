@@ -1,9 +1,9 @@
 /* Today — the day's ring, a week strip, and every target grouped by category. */
 
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
-import { C, S, Bar, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
+import { C, S, Bar, Btn, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
 import * as M from "../model/targets";
 
@@ -12,6 +12,7 @@ const fmtBrief = (d) => d.toLocaleDateString(undefined, { weekday: "short", day:
 
 export default function Today({ doc, update, day, setDay }) {
   const [editing, setEditing] = useState(null);   // { target, dayKey }
+  const [planning, setPlanning] = useState(null); // { target, dayKey }
   const log = doc.log || {};
   const targets = doc.targets || [];
 
@@ -102,7 +103,8 @@ export default function Today({ doc, update, day, setDay }) {
               <View key={t.id}>
                 {i > 0 && <View style={S.rule} />}
                 {M.isFuture(day) ? (
-                  <PlannedRow t={t} day={day} />
+                  <PlannedRow t={t} day={day} plans={doc.plans}
+                              onPress={() => setPlanning({ target: t, dayKey: day })} />
                 ) : M.hasTypes(t) ? (
                   <TypedRow
                     t={t} day={day} log={log}
@@ -121,6 +123,13 @@ export default function Today({ doc, update, day, setDay }) {
           </View>
         );
       })}
+
+      <PlanSheet
+        state={planning}
+        doc={doc}
+        update={update}
+        onClose={() => setPlanning(null)}
+      />
 
       <LogSheet
         target={editing?.target}
@@ -196,25 +205,30 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
 /* A day that has not happened yet. It shows what the plan asked for and
    nothing else — no circle to tap, because recording a session before it has
    happened would put work into the week's totals that nobody has done. */
-function PlannedRow({ t, day }) {
-  const planned = M.isPlannedOn(t, day);
-  const types = M.plannedOn(t, day);
+function PlannedRow({ t, day, plans, onPress }) {
+  const p = M.planFor(t, day, plans);
 
   return (
-    <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, gap: 11, opacity: planned ? 1 : 0.45 }]}>
+    <Pressable onPress={onPress}
+      style={({ pressed }) => [S.row, {
+        paddingVertical: 11, paddingHorizontal: 13, gap: 11,
+        opacity: pressed ? 0.6 : p.planned ? 1 : 0.5,
+      }]}>
       <View style={{
         width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderStyle: "dashed",
-        borderColor: planned ? C.ink2 : C.rule,
+        borderColor: p.planned ? C.ink2 : C.rule,
       }} />
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 14.5, color: C.ink }}>{t.name}</Text>
         <Text style={[S.tiny, { marginTop: 2 }]}>
-          {planned
-            ? (types.length ? `Planned: ${types.map((id) => M.typeName(t, id)).join(", ")}` : "Planned")
+          {p.planned
+            ? (p.types.length ? `Planned: ${p.types.map((id) => M.typeName(t, id)).join(", ")}` : "Planned")
             : M.describe(t)}
+          {p.source === "override" ? " · this week only" : p.source === "recurring" ? " · every week" : ""}
         </Text>
       </View>
-    </View>
+      <Text style={{ fontSize: 20, color: C.ink3 }}>›</Text>
+    </Pressable>
   );
 }
 
@@ -310,6 +324,73 @@ function WeekStrip({ doc, day, setDay }) {
         );
       })}
     </View>
+  );
+}
+
+/* Planning a future day, and the question that makes it worth having:
+   is this just this week, or the way the week normally goes? Asking once, at
+   the moment of planning, is far less work than keeping a rhythm and a diary
+   as separate ideas people have to hold in their heads. */
+function PlanSheet({ state, doc, update, onClose }) {
+  if (!state) return null;
+  const { target: t, dayKey } = state;
+  const p = M.planFor(t, dayKey, doc.plans);
+  const weekday = M.DOW[M.dow(M.parseKey(dayKey))];
+
+  const setOnce = (value) =>
+    update((d) => ({ ...d, plans: M.setPlanOverride(d.plans || {}, t, dayKey, value) }));
+
+  const setEveryWeek = (on) =>
+    update((d) => ({
+      ...d,
+      // Clearing the one-off too, or the rhythm would be overruled on this very
+      // date by the thing it was meant to replace.
+      plans: M.setPlanOverride(d.plans || {}, t, dayKey, null),
+      targets: d.targets.map((x) =>
+        x.id === t.id ? M.setPlannedDay(x, M.dow(M.parseKey(dayKey)), on) : x),
+    }));
+
+  return (
+    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
+      <Pressable onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)", justifyContent: "flex-end" }}>
+        <Pressable onPress={(e) => e.stopPropagation()}
+          style={{
+            backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+            padding: 18, paddingBottom: 30,
+          }}>
+          <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{t.name}</Text>
+          <Text style={[S.muted, { marginBottom: 16 }]}>
+            {M.parseKey(dayKey).toLocaleDateString(undefined,
+              { weekday: "long", day: "numeric", month: "long" })}
+            {p.planned ? `  ·  currently planned ${p.source === "override" ? "this week only" : "every week"}` : ""}
+          </Text>
+
+          {!p.planned ? (
+            <>
+              <Btn primary label="Plan it, just this week" onPress={() => { setOnce(true); onClose(); }} />
+              <Btn label={`Plan it every ${weekday}`} onPress={() => { setEveryWeek(true); onClose(); }} />
+            </>
+          ) : p.source === "recurring" ? (
+            <>
+              <Text style={[S.muted, { marginBottom: 8 }]}>
+                This comes from the weekly rhythm, so it appears every {weekday}.
+              </Text>
+              <Btn label="Skip it just this week" onPress={() => { setOnce(false); onClose(); }} />
+              <Btn danger label={`Stop planning it on ${weekday}s`}
+                   onPress={() => { setEveryWeek(false); onClose(); }} />
+            </>
+          ) : (
+            <>
+              <Btn label="Unplan it" onPress={() => { setOnce(null); onClose(); }} />
+              <Btn label={`Make it every ${weekday}`} onPress={() => { setEveryWeek(true); onClose(); }} />
+            </>
+          )}
+
+          <Btn label="Cancel" onPress={onClose} />
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 

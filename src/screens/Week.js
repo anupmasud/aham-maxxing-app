@@ -69,7 +69,7 @@ export default function Week({ doc, update, day }) {
           </View>
 
           {rows.map((t) => (
-            <Row key={t.id} t={t} keys={keys} log={log} setLog={setLog}
+            <Row key={t.id} t={t} keys={keys} log={log} plans={doc.plans} setLog={setLog}
                  open={(k) => setEditing({ target: t, dayKey: k })} />
           ))}
         </View>
@@ -86,7 +86,7 @@ export default function Week({ doc, update, day }) {
   );
 }
 
-function Row({ t, keys, log, setLog, open }) {
+function Row({ t, keys, log, plans, setLog, open }) {
   const p = M.progress(t, keys[0], log);
   const ceiling = t.dir === "at_most";
 
@@ -110,13 +110,13 @@ function Row({ t, keys, log, setLog, open }) {
         <Text style={{ fontSize: 10, color: goalColor, marginTop: 1 }} numberOfLines={1}>{goalLabel}</Text>
       </View>
       {keys.map((k) => (
-        <Cell key={k} t={t} dayKey={k} log={log} setLog={setLog} open={open} />
+        <Cell key={k} t={t} dayKey={k} log={log} plans={plans} setLog={setLog} open={open} />
       ))}
     </View>
   );
 }
 
-function Cell({ t, dayKey, log, setLog, open }) {
+function Cell({ t, dayKey, log, plans, setLog, open }) {
   const applies = M.appliesOn(t, dayKey);
   const v = M.valueOn(log, t.id, dayKey);
   const future = M.isFuture(dayKey);
@@ -133,7 +133,7 @@ function Cell({ t, dayKey, log, setLog, open }) {
   /* A day still to come shows the plan and takes no input: ticking it would
      add a session to the week's total that has not happened. */
   if (future) {
-    const planned = M.isPlannedOn(t, dayKey);
+    const planned = M.isPlannedOn(t, dayKey, plans);
     return (
       <View style={{ flex: 1, alignItems: "center", paddingVertical: 2 }}>
         <View style={{

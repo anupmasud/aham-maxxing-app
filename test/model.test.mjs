@@ -414,5 +414,43 @@ console.log("\n19. typed and untyped plans do not interfere");
   eq("an untouched day is not planned", M.isPlannedOn(typed, thisWeek[1]), false);
 }
 
+console.log("\n20. planning one particular week without disturbing the rhythm");
+{
+  const walk = { id: "walk", kind: "amount", dir: "at_least", period: "day", goal: 30,
+                 unit: "min", step: 5, days: M.ALL_DAYS, plan: { 1: true, 3: true } };
+  const tue = thisWeek[1];
+  const wed = thisWeek[2];
+
+  eq("the rhythm answers when nothing overrides it", M.planFor(walk, tue, {}).source, "recurring");
+  eq("and says planned", M.planFor(walk, tue, {}).planned, true);
+  eq("an unplanned weekday", M.planFor(walk, wed, {}).planned, false);
+
+  // Add this one Wednesday, without touching every Wednesday.
+  let plans = M.setPlanOverride({}, walk, wed, true);
+  eq("planned this week", M.planFor(walk, wed, plans).planned, true);
+  eq("as an override", M.planFor(walk, wed, plans).source, "override");
+  eq("next Wednesday is unaffected",
+     M.planFor(walk, M.keyOf(M.addDays(M.parseKey(wed), 7)), plans).planned, false);
+
+  // Skip a single Tuesday the rhythm asks for.
+  plans = M.setPlanOverride(plans, walk, tue, false);
+  eq("skipped this week", M.planFor(walk, tue, plans).planned, false);
+  eq("next Tuesday still stands",
+     M.planFor(walk, M.keyOf(M.addDays(M.parseKey(tue), 7)), plans).planned, true);
+
+  // Dropping the override falls back to the rhythm.
+  plans = M.setPlanOverride(plans, walk, tue, null);
+  eq("back to the rhythm", M.planFor(walk, tue, plans).source, "recurring");
+  eq("and no empty day left behind", Object.keys(plans).includes(tue), false);
+
+  // A typed target can have its kinds set for one date.
+  const str = { id: "str", kind: "tick", dir: "at_least", period: "week", goal: 4,
+                days: M.ALL_DAYS, types: [{ id: "arms", name: "Arms" }], plan: {} };
+  const p2 = M.setPlanOverride({}, str, wed, ["arms"]);
+  eq("kinds planned for one date", M.plannedOn(str, wed, p2), ["arms"]);
+  eq("an empty list means not planned",
+     M.planFor(str, wed, M.setPlanOverride({}, str, wed, [])).planned, false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

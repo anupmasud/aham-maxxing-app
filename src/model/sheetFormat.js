@@ -25,7 +25,8 @@
 import { ALL_DAYS, DOW, isDateKey, round2 } from "./targets";
 
 export const TABS = {
-  CATS: "Categories", TARGETS: "Targets", TYPES: "Types", LOG: "Log", SETTINGS: "Settings",
+  CATS: "Categories", TARGETS: "Targets", TYPES: "Types",
+  LOG: "Log", PLAN: "Plan", SETTINGS: "Settings",
 };
 
 const norm = (v) => String(v == null ? "" : v).trim();
@@ -79,6 +80,7 @@ export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period"
                          "goal", "unit", "step", "days", "planned", "order", "archived"];
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
 export const SETTINGS_HEAD = ["setting", "value"];
+export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
 
 /* ------------------------------------------------------------------ out -- */
 
@@ -161,6 +163,29 @@ function cellOut(t, raw) {
   return "";
 }
 
+/* Plans for particular dates, as opposed to the weekly rhythm each target
+   carries. One row per date and target, including the ones that say no —
+   "not this Tuesday" is a decision worth recording, not an absence. */
+export function planOut(doc) {
+  const byId = {};
+  doc.targets.forEach((t) => { byId[t.id] = t; });
+
+  const rows = [PLAN_HEAD];
+  Object.keys(doc.plans || {}).filter(isDateKey).sort().forEach((date) => {
+    Object.entries(doc.plans[date]).forEach(([id, value]) => {
+      const t = byId[id];
+      if (!t) return;
+      const ids = Array.isArray(value) ? value : [];
+      rows.push([
+        date, t.name, id,
+        value === false ? "FALSE" : "TRUE",
+        ids.map((v) => ((t.types || []).find((x) => x.id === v) || {}).name || v).join("; "),
+      ]);
+    });
+  });
+  return rows;
+}
+
 /* Preferences, as plain rows.
 
    These used to live only in memory and be carried from one load to the next,
@@ -185,6 +210,7 @@ export const docToSheets = (doc) => ({
   [TABS.TARGETS]: targetsOut(doc),
   [TABS.TYPES]: typesOut(doc),
   [TABS.LOG]: logOut(doc),
+  [TABS.PLAN]: planOut(doc),
   [TABS.SETTINGS]: settingsOut(doc),
 });
 
@@ -273,6 +299,22 @@ export function sheetsToDoc(tabs, base = {}) {
     if (Object.keys(day).length) log[date] = day;
   });
 
+  const plans = {};
+  rows(TABS.PLAN).forEach((r) => {
+    const date = norm(r[0]);
+    const t = byId[norm(r[2])];
+    if (!isDateKey(date) || !t) return;
+    const on = bool(r[3]);
+    const kinds = norm(r[4])
+      .split(";")
+      .map((part) => {
+        const found = (t.types || []).find((ty) => lower(ty.name) === lower(part));
+        return found ? found.id : null;
+      })
+      .filter(Boolean);
+    plans[date] = { ...(plans[date] || {}), [t.id]: !on ? false : (kinds.length ? kinds : true) };
+  });
+
   /* Settings read from the sheet win; whatever was in memory is only a
      fallback for a document written before this tab existed. */
   const setting = {};
@@ -296,6 +338,7 @@ export function sheetsToDoc(tabs, base = {}) {
     categories,
     targets,
     log,
+    plans,
   };
 }
 

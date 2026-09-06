@@ -53,7 +53,8 @@ const doc = {
 console.log("\n1. what the tabs look like");
 {
   const tabs = M.docToSheets(doc);
-  eq("five tabs", Object.keys(tabs).sort(), ["Categories", "Log", "Settings", "Targets", "Types"]);
+  eq("six tabs", Object.keys(tabs).sort(),
+     ["Categories", "Log", "Plan", "Settings", "Targets", "Types"]);
   eq("targets carry the category by name", tabs.Targets[1][1], "Movement");
   eq("restricted days written as names", tabs.Targets[3][9], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][9], "All");
@@ -173,6 +174,30 @@ console.log("\n4b. a plan for a target without types");
   edited.Targets = edited.Targets.map((r) => (r[0] === "t_water" ? [...r.slice(0, 10), "Tue", ...r.slice(11)] : r));
   eq("a hand-edited plan takes effect",
      M.sheetsToDoc(edited, planned).targets.find((t) => t.id === "t_water").plan, { 1: true });
+}
+
+console.log("\n4c. plans for particular dates");
+{
+  const withPlans = {
+    ...doc,
+    plans: {
+      "2026-09-15": { t_water: true, t_floss: false },
+      "2026-09-16": { t_str: ["ty_arms"] },
+    },
+  };
+  const tabs = M.docToSheets(withPlans);
+  eq("a row per date and target", tabs.Plan.length - 1, 3);
+  eq("a refusal is recorded, not omitted",
+     tabs.Plan.find((r) => r[2] === "t_floss").slice(0, 4), ["2026-09-15", "Floss", "t_floss", "FALSE"]);
+  eq("kinds written by name", tabs.Plan.find((r) => r[2] === "t_str")[4], "Arms");
+
+  const back = M.sheetsToDoc(tabs, withPlans);
+  eq("round trip", back.plans, withPlans.plans);
+
+  // A document from before the tab existed.
+  const legacy = M.docToSheets(withPlans);
+  delete legacy.Plan;
+  eq("no plan tab is simply no plans", M.sheetsToDoc(legacy).plans, {});
 }
 
 console.log("\n4. a kind renamed in the sheet keeps its history");

@@ -87,7 +87,8 @@ export function useCloudDoc() {
       // offline and let the next save try again.
       setError(e.message);
       setStatus(
-        e.needsScope || e.missingScope ? "needs-permission"
+        e.setup ? "error"
+        : e.needsScope || e.missingScope ? "needs-permission"
         : e.needsSignIn ? "expired"
         : cached ? "offline" : "error"
       );

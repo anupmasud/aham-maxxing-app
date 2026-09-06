@@ -86,6 +86,12 @@ export default function App() {
           {CONFIG.folderPath.join(" / ")} on your own Drive — this app can only
           see files it created there, nothing else.
         </Text>
+        {/* Google leaves the Drive checkbox unticked and gives an app no way to
+            pre-select it, so the only thing that helps is saying so first. */}
+        <Text style={[S.muted, { marginTop: 12, color: C.warn }]}>
+          Google will show a tick box for Drive access. Please tick it — without
+          it there is nowhere to save.
+        </Text>
         {status === "starting"
           ? <ActivityIndicator style={{ marginTop: 22 }} />
           : <Btn primary label="Sign in with Google" onPress={signIn} />}

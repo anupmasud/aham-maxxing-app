@@ -41,6 +41,18 @@ async function req(url, opts = {}, retry = true) {
     const body = await res.text().catch(() => "");
     const err = new Error(`Sheets ${res.status}: ${body.slice(0, 300)}`);
     err.status = res.status;
+
+    /* Two very different problems both arrive as a 403, and telling someone
+       "permission denied" when the real answer is "switch an API on in your
+       own console" sends them hunting in the wrong place entirely. */
+    if (res.status === 403 && /has not been used in project|is disabled/i.test(body)) {
+      err.setup = true;
+      err.message =
+        "The Google Sheets API is not switched on for this project yet. " +
+        "Enable it in the Google Cloud console, wait a minute, then try again.";
+    } else if (res.status === 403 && /insufficient|scope|permission/i.test(body)) {
+      err.needsScope = true;
+    }
     throw err;
   }
   return res.status === 204 ? null : res.json();

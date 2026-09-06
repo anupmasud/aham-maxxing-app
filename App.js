@@ -42,7 +42,7 @@ const STATUS = {
 export default function App() {
   const {
     user, doc, status, error, conflict, configured,
-    update, syncNow, resolveConflict, signIn, signOut, disconnect, folderUrl, fileUrl,
+    update, syncNow, resolveConflict, signIn, signOut, disconnect, folderUrl, sheetUrl,
   } = useCloudDoc();
 
   // Opens on Insights: the first question on picking up the phone is usually
@@ -81,7 +81,7 @@ export default function App() {
     return (
       <Gate title="AhamMaxxing" tagline="Set the targets. Own the week.">
         <Text style={S.body}>
-          Sign in with Google. Everything is kept as a single file in{" "}
+          Sign in with Google. Everything is kept in a spreadsheet in{" "}
           {CONFIG.folderPath.join(" / ")} on your own Drive — this app can only
           see files it created there, nothing else.
         </Text>
@@ -144,7 +144,7 @@ export default function App() {
 
   const props = {
     doc, update, day, setDay, tab, setTab, user, status, error,
-    syncNow, signOut, disconnect, folderUrl, fileUrl,
+    syncNow, signOut, disconnect, folderUrl, sheetUrl,
   };
 
   return (

@@ -8,7 +8,7 @@ import * as M from "../model/targets";
 import { CATEGORY_COLORS, SUGGESTIONS, UNITS } from "../model/seed";
 import { CONFIG } from "../config";
 
-export default function Setup({ doc, update, user, folderUrl, signOut, disconnect }) {
+export default function Setup({ doc, update, user, folderUrl, sheetUrl, signOut, disconnect }) {
   const [editTarget, setEditTarget] = useState(null);   // { target } | { catId }
   const [editCat, setEditCat] = useState(null);         // { cat } | {}
   const [confirming, setConfirming] = useState(null);   // { title, message, onConfirm }
@@ -115,11 +115,17 @@ export default function Setup({ doc, update, user, folderUrl, signOut, disconnec
       <View style={[S.card, S.cardPad]}>
         <Text style={[S.h2, { marginBottom: 8 }]}>Your data</Text>
         <Text style={S.muted}>
-          Signed in as {user?.email}. Everything is one file in{" "}
-          {CONFIG.folderPath.join(" / ")} on your Drive — yours to read, edit or keep.
+          Signed in as {user?.email}. Everything lives in a spreadsheet in{" "}
+          {CONFIG.folderPath.join(" / ")} on your Drive — four tabs you can read,
+          sort, chart or edit by hand. Change a goal there and the app picks it up.
         </Text>
+        {!!sheetUrl && (
+          <Pressable onPress={() => Linking.openURL(sheetUrl)} style={{ marginTop: 10 }}>
+            <Text style={{ color: C.accent, fontSize: 14 }}>Open the spreadsheet</Text>
+          </Pressable>
+        )}
         {!!folderUrl && (
-          <Pressable onPress={() => Linking.openURL(folderUrl)} style={{ marginTop: 10 }}>
+          <Pressable onPress={() => Linking.openURL(folderUrl)} style={{ marginTop: 6 }}>
             <Text style={{ color: C.accent, fontSize: 14 }}>Open the folder in Drive</Text>
           </Pressable>
         )}

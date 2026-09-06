@@ -181,6 +181,24 @@ export async function loadDoc() {
   return { id: file.id, folderId, doc, modifiedTime: file.modifiedTime };
 }
 
+/* Reads the JSON document if one exists, without creating it.
+
+   Used once, to carry an existing document into the spreadsheet the first time
+   the app opens after the switch. The JSON file is deliberately left in place
+   afterwards rather than deleted: it costs nothing, and it is the way back if
+   the sheet is ever mangled by hand. */
+export async function readJsonIfExists(folderId) {
+  const file = await findFile(folderId);
+  if (!file) return null;
+  try {
+    const res = await req(`${FILES}/${file.id}?alt=media`);
+    const doc = JSON.parse(await res.text());
+    return doc && Array.isArray(doc.targets) && doc.targets.length ? doc : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /* ----------------------------------------------------------------- write -- */
 
 /* Saves, but refuses to overwrite work done elsewhere.

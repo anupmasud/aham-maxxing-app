@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CONFIG, isAllowed } from "../config";
 import * as Auth from "../google/auth";
 import * as Drive from "../google/drive";
+import * as Sheets from "../google/sheets";
 
 const SAVE_DELAY = 1200;
 const cacheKey = (email) => `ahammaxxing:doc:${email || "anon"}`;
@@ -59,13 +60,26 @@ export function useCloudDoc() {
     setStatus(cached ? "ready" : "loading");
 
     try {
-      const { id, folderId: fid, doc: remote, modifiedTime } = await Drive.loadDoc();
+      const { id, folderId: fid, doc: remote, modifiedTime, empty } = await Sheets.loadDoc();
       fileId.current = id;
       folderId.current = fid;
-      baseTime.current = modifiedTime;
-      setDoc(remote);
-      latest.current = remote;
-      await cache(u.email, remote);
+
+      /* A brand-new spreadsheet is filled from whatever already exists: the
+         JSON document if this is the switch from the old store, otherwise a
+         starting set of targets. The JSON is read, never deleted — it costs
+         nothing to leave behind and it is the way back. */
+      let doc = remote;
+      if (empty) {
+        doc = (await Drive.readJsonIfExists(fid)) || cached || CONFIG.emptyDoc();
+        const saved = await Sheets.saveDoc(id, doc, null, { force: true });
+        baseTime.current = saved.modifiedTime;
+      } else {
+        baseTime.current = modifiedTime;
+      }
+
+      setDoc(doc);
+      latest.current = doc;
+      await cache(u.email, doc);
       setStatus("ready");
       setError("");
     } catch (e) {
@@ -96,7 +110,7 @@ export function useCloudDoc() {
     if (!fileId.current || !latest.current || !user) return;
     setStatus("saving");
     try {
-      const { modifiedTime } = await Drive.saveDoc(fileId.current, latest.current, baseTime.current);
+      const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, baseTime.current);
       baseTime.current = modifiedTime;
       setStatus("ready");
       setError("");
@@ -105,7 +119,7 @@ export function useCloudDoc() {
         // Fetch the other side so the user can actually compare, rather than
         // being asked to choose blind.
         try {
-          const { doc: theirs } = await Drive.loadDoc();
+          const { doc: theirs } = await Sheets.loadDoc();
           setConflict({ mine: latest.current, theirs });
         } catch (_) {
           setConflict({ mine: latest.current, theirs: null });
@@ -151,8 +165,8 @@ export function useCloudDoc() {
       setDoc(conflict.theirs);
       latest.current = conflict.theirs;
       if (user) await cache(user.email, conflict.theirs);
-      const meta = folderId.current ? await Drive.findFile(folderId.current) : null;
-      baseTime.current = meta ? meta.modifiedTime : null;
+      const fresh = await Sheets.loadDoc();
+      baseTime.current = fresh.modifiedTime;
       setConflict(null);
       setStatus("ready");
       return;
@@ -161,7 +175,7 @@ export function useCloudDoc() {
     setConflict(null);
     setStatus("saving");
     try {
-      const { modifiedTime } = await Drive.saveDoc(fileId.current, latest.current, null, { force: true });
+      const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, null, { force: true });
       baseTime.current = modifiedTime;
       setStatus("ready");
     } catch (e) {
@@ -215,7 +229,7 @@ export function useCloudDoc() {
     user, doc, status, error, conflict,
     update, syncNow, resolveConflict,
     signIn, signOut, disconnect,
-    fileUrl: fileId.current ? Drive.fileUrl(fileId.current) : null,
+    sheetUrl: fileId.current ? Sheets.sheetUrl(fileId.current) : null,
     folderUrl: folderId.current ? Drive.folderUrl(folderId.current) : null,
     configured: !!(CONFIG.iosClientId || CONFIG.webClientId),
   };

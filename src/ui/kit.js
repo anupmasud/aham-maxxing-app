@@ -308,6 +308,42 @@ export function Confirm({ state, onClose }) {
 
 /* --------------------------------------------------------------- heading -- */
 
+/* A target's own notes, wherever they are worth reading.
+
+   Collapsed to one line unless asked, because the details are usually two
+   words you want reminding of and occasionally a routine of eight — and a
+   list of what is left today stops being one if every row is a paragraph.
+   Tap to see the rest; `full` is for the places with room, like the sheet you
+   open to log the thing.
+
+   The rule down the left says "this is written by you, not by the app",
+   which matters where it sits under a line of the app's own prose. */
+export function Note({ text, full = false, style }) {
+  const [open, setOpen] = useState(false);
+  const body = String(text || "").trim();
+  if (!body) return null;
+
+  const shown = full || open;
+  const inner = (
+    <View style={[{ flexDirection: "row", gap: 7, marginTop: 5 }, style]}>
+      <View style={{ width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.rule }} />
+      <Text
+        style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2 }}
+        numberOfLines={shown ? undefined : 1}
+      >
+        {body}
+      </Text>
+    </View>
+  );
+
+  if (full) return inner;
+  return (
+    <Pressable onPress={() => setOpen((v) => !v)} hitSlop={4}>
+      {inner}
+    </Pressable>
+  );
+}
+
 export function CatHeader({ cat, right }) {
   return (
     <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, backgroundColor: C.sunk, gap: 9 }]}>

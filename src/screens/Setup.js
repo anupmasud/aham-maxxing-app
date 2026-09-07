@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn, CatHeader, Chip, Confirm, Select } from "../ui/kit";
+import { C, S, Btn, CatHeader, Chip, Confirm, Note, Select } from "../ui/kit";
 import * as M from "../model/targets";
 import {
   CATEGORY_COLORS, TEMPLATES, UNITS, addTemplateCategories, suggestionsFor, templateById,
@@ -37,7 +37,7 @@ export default function Setup({
     update((d) => ({
       ...d,
       targets: [...d.targets, {
-        ...s, id: M.uid("t_"), catId, archived: false, until: "",
+        ...s, id: M.uid("t_"), catId, archived: false, until: "", note: "",
         days: [...M.ALL_DAYS], order: nextOrder(d.targets.filter((t) => t.catId === catId)),
       }],
     }));
@@ -124,6 +124,7 @@ export default function Setup({
                         {!g.catId && cat ? `${cat.emoji} ${cat.name} · ` : ""}
                         {M.describe(t)}{t.archived ? " · paused" : ""}
                       </Text>
+                      <Note text={t.note} />
                     </View>
                     <Mini glyph={t.archived ? "▶" : "❚❚"} onPress={() => update((d) => ({
                       ...d, targets: d.targets.map((x) => x.id === t.id ? { ...x, archived: !x.archived } : x),
@@ -563,7 +564,7 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
     setSeeded(key);
     setForm(existing ? { ...existing } : {
       name: "", catId: state.catId, kind: "tick", dir: "at_least", period: "day",
-      goal: 1, unit: "", step: 1, days: [...M.ALL_DAYS], until: "", archived: false,
+      goal: 1, unit: "", step: 1, days: [...M.ALL_DAYS], until: "", note: "", archived: false,
       // Started from inside a cadence, it begins at that cadence.
       ...(state.seed || {}),
     });
@@ -594,6 +595,7 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       // Whatever is in the box is only a date if it reads as one; anything
       // else means no end rather than an end nobody can interpret.
       until: M.endOf(form),
+      note: (form.note || "").trim(),
     };
     update((d) => existing
       ? { ...d, targets: d.targets.map((t) => (t.id === existing.id ? { ...t, ...clean } : t)) }
@@ -720,6 +722,19 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
           </View>
         </>
       )}
+
+      <Text style={[S.label, { marginTop: 16 }]}>Notes (optional)</Text>
+      <Text style={[S.tiny, { marginBottom: 6 }]}>
+        The detail the name leaves out — what the session actually is, what
+        counts, what to remember. It shows wherever you tick this off.
+      </Text>
+      <TextInput
+        style={[S.input, { minHeight: 78, textAlignVertical: "top" }]}
+        multiline
+        value={form.note || ""}
+        onChangeText={(v) => set({ note: v })}
+        placeholder={"e.g. Hamstring curls x15, glute bridges x20, bird dog x10 each side"}
+      />
 
       <EndDate form={form} set={set} />
 

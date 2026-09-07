@@ -7,7 +7,7 @@
 
      Categories  id · name · emoji · colour · order
      Targets     id · category · name · kind · direction · period · goal ·
-                 unit · step · days · planned · until · order · archived
+                 unit · step · days · planned · until · order · archived · note
      Types       one row per kind, with its weekly minimum and planned days
      Log         one row per date, one column per target
      Plan        one row per date-specific decision, including the noes
@@ -101,8 +101,12 @@ export function untilIn(v) {
 /* --------------------------------------------------------------- headers -- */
 
 export const CAT_HEAD = ["id", "name", "emoji", "colour", "order"];
+/* `note` sits last on purpose: it is the only free-text column and the only
+   one that can run to a paragraph, and a wide cell in the middle pushes every
+   short column off the screen. */
 export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period",
-                         "goal", "unit", "step", "days", "planned", "until", "order", "archived"];
+                         "goal", "unit", "step", "days", "planned", "until", "order",
+                         "archived", "note"];
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
 export const SETTINGS_HEAD = ["setting", "value"];
 export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
@@ -126,6 +130,7 @@ export function targetsOut(doc) {
     (t.types || []).length ? "" : plannedOut(t),
     t.until || "",
     t.order, t.archived ? "TRUE" : "FALSE",
+    t.note || "",
   ])];
 }
 
@@ -309,6 +314,7 @@ export function sheetsToDoc(tabs, base = {}) {
       until: untilIn(tgt(r, "until")),
       order: num(tgt(r, "order"), i),
       archived: bool(tgt(r, "archived")),
+      note: norm(tgt(r, "note")),
       types: [],
       plan: planIn(tgt(r, "planned")),
     };

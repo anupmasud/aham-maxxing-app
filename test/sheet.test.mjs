@@ -36,17 +36,18 @@ const doc = {
   targets: [
     { id: "t_water", catId: "c_move", name: "Water", kind: "amount", dir: "at_least",
       period: "day", goal: 3, unit: "L", step: 0.25, days: [0,1,2,3,4,5,6], until: "", order: 0,
-      archived: false, types: [], plan: {} },
+      archived: false, note: "", types: [], plan: {} },
     { id: "t_str", catId: "c_move", name: "Strength training", kind: "tick", dir: "at_least",
       period: "week", goal: 5, unit: "", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 1, archived: false,
+      note: 'Hamstring curls x15, glute bridges x20.\nSay "slow" on the way down.',
       types: [{ id: "ty_lymph", name: "Lymph drainage", goal: 5 }, { id: "ty_arms", name: "Arms", goal: 2 }],
       plan: { 0: ["ty_lymph", "ty_arms"], 2: ["ty_lymph"] } },
     { id: "t_floss", catId: "c_move", name: "Floss", kind: "tick", dir: "at_least",
       period: "day", goal: 1, unit: "", step: 1, days: [0,2,4], until: "2026-12-31", order: 2,
-      archived: true, types: [], plan: {} },
+      archived: true, note: "", types: [], plan: {} },
     { id: "t_booze", catId: "c_limits", name: "Alcohol", kind: "amount", dir: "at_most",
       period: "week", goal: 6, unit: "units", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 3,
-      archived: false, types: [], plan: {} },
+      archived: false, note: "", types: [], plan: {} },
   ],
   log: {
     "2026-09-01": { t_water: 2.75, t_str: { n: 2, v: ["ty_lymph", "ty_arms"] }, t_floss: true },
@@ -290,6 +291,32 @@ console.log("\n8. end dates survive the round trip");
   const back = M.sheetsToDoc(M.docToSheets(doc), doc);
   eq("the end date comes back", back.targets.find((t) => t.id === "t_floss").until, "2026-12-31");
   eq("and the others have none", back.targets.find((t) => t.id === "t_water").until, "");
+}
+
+console.log("\n9. notes ride along with the target");
+{
+  const tabs = M.docToSheets(doc);
+  const row = tabs.Targets.find((r) => r[0] === "t_str");
+  eq("written to its own column",
+     row[col("note")], 'Hamstring curls x15, glute bridges x20.\nSay "slow" on the way down.');
+  eq("and last, after archived", col("note"), M.TGT_HEAD.length - 1);
+  eq("a target with no note leaves it blank",
+     tabs.Targets.find((r) => r[0] === "t_water")[col("note")], "");
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("newlines and quotes survive the round trip",
+     back.targets.find((t) => t.id === "t_str").note,
+     'Hamstring curls x15, glute bridges x20.\nSay "slow" on the way down.');
+  eq("and no note stays no note", back.targets.find((t) => t.id === "t_water").note, "");
+
+  // A sheet written before notes existed reads as no note, not as a neighbour.
+  const older = JSON.parse(JSON.stringify(tabs));
+  older.Targets = older.Targets.map((r) => r.slice(0, M.TGT_HEAD.length - 1));
+  const noNotes = M.sheetsToDoc(older, doc);
+  eq("an older sheet has no notes", noNotes.targets.map((t) => t.note), ["", "", "", ""]);
+  eq("and everything else is intact", noNotes.targets.map((t) => t.goal), [3, 5, 1, 6]);
+  eq("including the column before it", noNotes.targets.map((t) => t.archived),
+     [false, false, true, false]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

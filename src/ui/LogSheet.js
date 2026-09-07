@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn } from "./kit";
+import { C, S, Btn, Note } from "./kit";
 import * as M from "../model/targets";
 
 const fmtDay = (k) =>
@@ -62,9 +62,12 @@ export function LogSheet({ target, dayKey, log, onChangeLog, onClose }) {
           }}
         >
           <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{target.name}</Text>
-          <Text style={[S.muted, { marginBottom: 16 }]}>
+          <Text style={[S.muted, { marginBottom: target.note ? 4 : 16 }]}>
             {fmtDay(dayKey)}{"  ·  "}{M.describe(target)}
           </Text>
+          {/* Room enough here to show the whole thing — this is the moment the
+              detail is for, with the target open in front of you. */}
+          <Note text={target.note} full style={{ marginBottom: 16 }} />
 
           {typed ? (
             <>

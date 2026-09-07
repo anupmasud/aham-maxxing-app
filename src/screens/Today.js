@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
-import { C, S, Bar, Btn, CatHeader, Ring, Stepper, Tick } from "../ui/kit";
+import { C, S, Bar, Btn, CatHeader, Note, Ring, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
 import * as M from "../model/targets";
 
@@ -189,6 +189,7 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
         {(t.kind === "amount" || weekly) && (
           <Bar ratio={p.ratio} over={p.over} warn={ceiling && p.ratio > 0.75} />
         )}
+        <Note text={t.note} />
       </View>
       {t.kind === "amount" && (
         <Stepper
@@ -253,6 +254,7 @@ function TypedRow({ t, day, log, onToggleType }) {
             {planned.length ? `  ·  ${planned.length} planned today` : ""}
           </Text>
           <Bar ratio={p.ratio} />
+          <Note text={t.note} />
         </View>
       </View>
 

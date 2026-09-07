@@ -506,5 +506,32 @@ console.log("\n21. a recurring target can be given an end date");
   eq("and stays quiet otherwise", M.describe(forever).includes("until"), false);
 }
 
+console.log("\n22. a weekday's plan is a list of kinds, or just `true`");
+{
+  /* Whole-target plans store `true`; typed ones store a list of type ids. Every
+     reader has to cope with both. Assuming an array threw a TypeError inside
+     the editor's save, so any target with a planned weekday and no types could
+     be opened and changed but never saved — silently, because the throw left
+     the sheet open looking exactly as it had. */
+  eq("a plain flag has no kinds", M.planTypes({ 4: true }, 4), []);
+  eq("a list is returned as is", M.planTypes({ 0: ["a", "b"] }, 0), ["a", "b"]);
+  eq("an unplanned day is empty", M.planTypes({ 4: true }, 1), []);
+  eq("so is no plan at all", M.planTypes(undefined, 0), []);
+
+  eq("pruning leaves a plain flag alone", M.prunePlan({ 4: true }, []), { 4: true });
+  eq("and keeps the ids that still exist",
+     M.prunePlan({ 0: ["a", "gone"], 2: ["gone"] }, ["a"]), { 0: ["a"] });
+  eq("a day emptied of kinds drops out", M.prunePlan({ 2: ["gone"] }, ["a"]), {});
+  eq("flags and lists side by side",
+     M.prunePlan({ 0: true, 1: ["a", "gone"], 2: ["gone"] }, new Set(["a"])),
+     { 0: true, 1: ["a"] });
+  eq("nothing in, nothing out", M.prunePlan(null, []), {});
+
+  // The shape the editor actually saves: an untyped target planned on Friday.
+  const walk = M.setPlannedDay({ id: "walk", types: [], plan: {} }, 4, true);
+  eq("planned as a flag", walk.plan, { 4: true });
+  eq("and survives a save with no types", M.prunePlan(walk.plan, new Set()), { 4: true });
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

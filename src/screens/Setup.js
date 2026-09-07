@@ -515,11 +515,7 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       .map((t) => ({ ...t, name: (t.name || "").trim(), goal: Number(t.goal) || 0 }))
       .filter((t) => t.name);
     const keep = new Set(types.map((t) => t.id));
-    const plan = Object.fromEntries(
-      Object.entries(form.plan || {})
-        .map(([d, ids]) => [d, (ids || []).filter((id) => keep.has(id))])
-        .filter(([, ids]) => ids.length)
-    );
+    const plan = M.prunePlan(form.plan, keep);
 
     const clean = {
       ...form, name, types, plan,
@@ -532,7 +528,6 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
       // Whatever is in the box is only a date if it reads as one; anything
       // else means no end rather than an end nobody can interpret.
       until: M.endOf(form),
-      plan: types.length ? plan : (form.plan || {}),
     };
     update((d) => existing
       ? { ...d, targets: d.targets.map((t) => (t.id === existing.id ? { ...t, ...clean } : t)) }
@@ -690,13 +685,11 @@ function TypesEditor({ form, set }) {
 
   const removeType = (id) => set({
     types: types.filter((t) => t.id !== id),
-    plan: Object.fromEntries(
-      Object.entries(plan).map(([d, ids]) => [d, (ids || []).filter((x) => x !== id)])
-    ),
+    plan: M.prunePlan(plan, types.filter((t) => t.id !== id).map((t) => t.id)),
   });
 
   const togglePlan = (dayIndex, typeId) => {
-    const current = plan[dayIndex] || [];
+    const current = M.planTypes(plan, dayIndex);
     const next = current.includes(typeId)
       ? current.filter((x) => x !== typeId)
       : [...current, typeId];
@@ -759,7 +752,7 @@ function TypesEditor({ form, set }) {
                 {ty.name || "Untitled"}
               </Text>
               {M.ALL_DAYS.map((i) => {
-                const on = (plan[i] || []).includes(ty.id);
+                const on = M.planTypes(plan, i).includes(ty.id);
                 return (
                   <Pressable key={i} onPress={() => togglePlan(i, ty.id)}
                     style={{ flex: 1, alignItems: "center", paddingVertical: 2 }}>

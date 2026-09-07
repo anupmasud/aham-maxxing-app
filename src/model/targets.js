@@ -443,6 +443,35 @@ export function setPlanOverride(plans, t, dayKey, value) {
   return next;
 }
 
+/* The type ids planned for one weekday, as a list.
+
+   A weekday's plan is a list of type ids for a target with types and a plain
+   `true` for one without, and both live in the same field. Anywhere that wants
+   the ids has to cope with `true`, which has no `.filter`, no `.includes` and
+   no length — reading through here rather than assuming an array is what stops
+   that being discovered one call site at a time. */
+export const planTypes = (plan, dowIndex) => {
+  const v = (plan || {})[dowIndex];
+  return Array.isArray(v) ? v : [];
+};
+
+/* Drops type ids that no longer exist, leaving whole-target flags alone.
+
+   Deleting a kind has to take it out of the plan too, or the plan goes on
+   asking for something there is no longer any way to do. A plain `true` is not
+   about any kind, so it survives untouched — pruning it as though it were a
+   list of ids is what used to make saving a planned target throw. */
+export function prunePlan(plan, keepIds) {
+  const keep = keepIds instanceof Set ? keepIds : new Set(keepIds || []);
+  const out = {};
+  Object.entries(plan || {}).forEach(([d, v]) => {
+    if (v === true) { out[d] = true; return; }
+    const ids = (Array.isArray(v) ? v : []).filter((id) => keep.has(id));
+    if (ids.length) out[d] = ids;
+  });
+  return out;
+}
+
 /* The weekdays a target is planned for, for showing and for editing. */
 export function plannedDays(t) {
   return ALL_DAYS.filter((d) => planEntry(t, d).planned);

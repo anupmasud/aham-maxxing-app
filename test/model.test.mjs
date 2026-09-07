@@ -15,7 +15,7 @@ const read = (f) => fs.readFileSync(path.join(dir, "..", "src", "model", f), "ut
 const strip = (f) => read(f)
   .replace(/^import .*$/gm, "")
   .replace(/^export \{[^}]*\}( from .*)?;$/gm, "");
-const source = ["targets.js", "templates.js", "seed.js"].map(strip).join("\n");
+const source = ["targets.js", "templates.js", "seed.js", "grouping.js"].map(strip).join("\n");
 const M = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
 
 let pass = 0, fail = 0;
@@ -531,6 +531,64 @@ console.log("\n22. a weekday's plan is a list of kinds, or just `true`");
   const walk = M.setPlannedDay({ id: "walk", types: [], plan: {} }, 4, true);
   eq("planned as a flag", walk.plan, { 4: true });
   eq("and survives a save with no types", M.prunePlan(walk.plan, new Set()), { 4: true });
+}
+
+console.log("\n23. the same targets, arranged two ways");
+{
+  const d = {
+    categories: [
+      { id: "c_move", name: "Movement", emoji: "🚶", color: "#3F7D5B", order: 0 },
+      { id: "c_mind", name: "Mind", emoji: "🧠", color: "#7A5EA8", order: 1 },
+      { id: "c_empty", name: "Learning", emoji: "📚", color: "#8C6D2F", order: 2 },
+    ],
+    targets: [
+      { id: "steps", catId: "c_move", name: "Steps", dir: "at_least", period: "day", order: 1 },
+      { id: "gym", catId: "c_move", name: "Strength", dir: "at_least", period: "week", order: 0 },
+      { id: "spanish", catId: "c_mind", name: "Spanish", dir: "at_least", period: "day", order: 0 },
+      { id: "booze", catId: "c_mind", name: "Alcohol", dir: "at_most", period: "week", order: 1 },
+      { id: "coffee", catId: "c_move", name: "Coffee", dir: "at_most", period: "day", order: 2 },
+      { id: "old", catId: "c_mind", name: "Paused thing", dir: "at_least", period: "day", order: 2, archived: true },
+    ],
+  };
+
+  const byArea = M.groupTargets(d, "category");
+  eq("a group per category, in their order", byArea.map((g) => g.name),
+     ["Movement", "Mind", "Learning"]);
+  eq("targets in their own order", byArea[0].targets.map((t) => t.name),
+     ["Strength", "Steps", "Coffee"]);
+  eq("an empty category is still somewhere to add to", byArea[2].targets.length, 0);
+  eq("and knows which category it is", byArea[0].catId, "c_move");
+
+  const byCadence = M.groupTargets(d, "cadence");
+  eq("three cadences", byCadence.map((g) => g.name), ["Every day", "Every week", "Limits"]);
+  eq("every daily thing to do, together",
+     byCadence[0].targets.map((t) => t.name), ["Steps", "Spanish", "Paused thing"]);
+  eq("weekly separately", byCadence[1].targets.map((t) => t.name), ["Strength"]);
+  eq("ceilings of both periods in their own group",
+     byCadence[2].targets.map((t) => t.name), ["Coffee", "Alcohol"]);
+  eq("a cadence belongs to no category", byCadence[0].catId, null);
+  eq("and adding from it starts there", byCadence[1].seed, { period: "week", dir: "at_least" });
+
+  // Grouping rearranges and nothing else.
+  const before = JSON.stringify(d);
+  const all = (gs) => gs.flatMap((g) => g.targets.map((t) => t.id)).sort();
+  eq("no target lost either way", all(byArea), all(byCadence));
+  eq("and every one of them is there", all(byCadence).length, 6);
+  eq("the document is untouched", JSON.stringify(d), before);
+
+  // An empty cadence is not a heading — there is no "weekly category" to fill.
+  const dailyOnly = { ...d, targets: d.targets.filter((t) => t.period === "day" && t.dir !== "at_most") };
+  eq("only the cadences you use", M.groupTargets(dailyOnly, "cadence").map((g) => g.name), ["Every day"]);
+
+  // The count is the promise you are actually making now.
+  const counts = M.cadenceCounts(d);
+  eq("paused targets are not counted", counts.day, 2);
+  eq("weekly counted", counts.week, 1);
+  eq("limits counted", counts.limits, 2);
+
+  eq("an unknown mode falls back to areas",
+     M.groupTargets(d, "nonsense").map((g) => g.name), ["Movement", "Mind", "Learning"]);
+  eq("two modes offered", M.GROUP_MODES.map((m) => m.id), ["category", "cadence"]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

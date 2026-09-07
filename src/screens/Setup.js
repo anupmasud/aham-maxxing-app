@@ -9,6 +9,7 @@ import {
   CATEGORY_COLORS, TEMPLATES, UNITS, addTemplateCategories, suggestionsFor, templateById,
 } from "../model/seed";
 import { guessCategory } from "../model/templates";
+import { GROUP_MODES, groupTargets } from "../model/grouping";
 import { applyImport, readImport } from "../model/csv";
 import { CONFIG } from "../config";
 
@@ -21,8 +22,14 @@ export default function Setup({
   const [reorganising, setReorganising] = useState(false);
   const [transferring, setTransferring] = useState(false);
 
+  /* A lens, not a preference: it changes how the list in front of you is
+     arranged and nothing about the document, so it is not written to Drive. */
+  const [grouping, setGrouping] = useState("category");
+
   const cats = (doc.categories || []).slice().sort((a, b) => a.order - b.order);
-  const targetsIn = (id) => (doc.targets || []).filter((t) => t.catId === id).sort((a, b) => a.order - b.order);
+  const groups = groupTargets(doc, grouping);
+  const catById = {};
+  cats.forEach((c) => { catById[c.id] = c; });
 
   const nextOrder = (list) => (list.length ? Math.max(...list.map((x) => x.order)) + 1 : 0);
 
@@ -44,75 +51,106 @@ export default function Setup({
         <Btn small label="+ Category" onPress={() => setEditCat({})} />
       </View>
 
-      {cats.map((cat) => {
-        const ts = targetsIn(cat.id);
-        const chips = suggestionsFor(doc, cat.id);
-        return (
-          <View key={cat.id} style={S.card}>
-            <CatHeader cat={cat} right={
-              <View style={[S.row, { gap: 4 }]}>
-                <Mini glyph="✎" onPress={() => setEditCat({ cat })} />
-                <Mini glyph="✕" danger onPress={() => confirm(
-                  `Delete "${cat.name}"?`,
-                  ts.length ? `Its ${ts.length} target${ts.length > 1 ? "s" : ""} and their history go too.` : "",
-                  () => update((d) => {
-                    const ids = new Set(d.targets.filter((t) => t.catId === cat.id).map((t) => t.id));
-                    const log = {};
-                    Object.entries(d.log || {}).forEach(([k, v]) => {
-                      const day = Object.fromEntries(Object.entries(v).filter(([id]) => !ids.has(id)));
-                      if (Object.keys(day).length) log[k] = day;
-                    });
-                    return {
-                      ...d, log,
-                      categories: d.categories.filter((c) => c.id !== cat.id),
-                      targets: d.targets.filter((t) => t.catId !== cat.id),
-                    };
-                  })
-                )} />
-              </View>
-            } />
+      {/* Two arrangements of the same list. By area is how you built it; by
+          cadence is how you find out you have promised twelve things a day. */}
+      <View style={[S.row, { gap: 6, marginBottom: 14 }]}>
+        {GROUP_MODES.map((m) => (
+          <Seg key={m.id} on={grouping === m.id} label={m.label} sub={m.sub}
+               onPress={() => setGrouping(m.id)} />
+        ))}
+      </View>
 
-            {ts.map((t, i) => (
-              <View key={t.id}>
-                {i > 0 && <View style={S.rule} />}
-                <View style={[S.row, { paddingVertical: 10, paddingHorizontal: 13, gap: 8 }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{
-                      // Struck through only when paused. A target that reached
-                      // its end date finished rather than being abandoned, so
-                      // it dims without being crossed out.
-                      fontSize: 14, color: t.archived || M.hasEnded(t) ? C.ink3 : C.ink,
-                      textDecorationLine: t.archived ? "line-through" : "none",
-                    }}>{t.name}</Text>
-                    <Text style={[S.tiny, { marginTop: 2 }]}>
-                      {M.describe(t)}{t.archived ? " · paused" : ""}
-                    </Text>
-                  </View>
-                  <Mini glyph={t.archived ? "▶" : "❚❚"} onPress={() => update((d) => ({
-                    ...d, targets: d.targets.map((x) => x.id === t.id ? { ...x, archived: !x.archived } : x),
-                  }))} />
-                  <Mini glyph="✎" onPress={() => setEditTarget({ target: t })} />
+      {groups.map((g) => {
+        const ts = g.targets;
+        const chips = g.catId ? suggestionsFor(doc, g.catId) : [];
+        const live = ts.filter((t) => !t.archived).length;
+        return (
+          <View key={g.id} style={S.card}>
+            <CatHeader
+              cat={{ name: g.name, emoji: g.emoji, color: g.color || TONE[g.tone] }}
+              right={g.catId ? (
+                <View style={[S.row, { gap: 4 }]}>
+                  <Mini glyph="✎" onPress={() => setEditCat({ cat: catById[g.catId] })} />
                   <Mini glyph="✕" danger onPress={() => confirm(
-                    `Delete "${t.name}"?`,
-                    "Its logged history goes too. To keep the history, pause it instead.",
+                    `Delete "${g.name}"?`,
+                    ts.length ? `Its ${ts.length} target${ts.length > 1 ? "s" : ""} and their history go too.` : "",
                     () => update((d) => {
+                      const ids = new Set(d.targets.filter((t) => t.catId === g.catId).map((t) => t.id));
                       const log = {};
                       Object.entries(d.log || {}).forEach(([k, v]) => {
-                        const { [t.id]: _drop, ...rest } = v;
-                        if (Object.keys(rest).length) log[k] = rest;
+                        const day = Object.fromEntries(Object.entries(v).filter(([id]) => !ids.has(id)));
+                        if (Object.keys(day).length) log[k] = day;
                       });
-                      return { ...d, log, targets: d.targets.filter((x) => x.id !== t.id) };
+                      return {
+                        ...d, log,
+                        categories: d.categories.filter((c) => c.id !== g.catId),
+                        targets: d.targets.filter((t) => t.catId !== g.catId),
+                      };
                     })
                   )} />
                 </View>
-              </View>
-            ))}
+              ) : (
+                <Text style={[S.tiny, { fontVariant: ["tabular-nums"] }]}>{live}</Text>
+              )}
+            />
+
+            {!!g.note && (
+              <Text style={[S.tiny, { paddingHorizontal: 13, paddingTop: 9, paddingBottom: 3 }]}>
+                {g.note}
+              </Text>
+            )}
+
+            {ts.map((t, i) => {
+              const cat = catById[t.catId];
+              return (
+                <View key={t.id}>
+                  {i > 0 && <View style={S.rule} />}
+                  <View style={[S.row, { paddingVertical: 10, paddingHorizontal: 13, gap: 8 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{
+                        // Struck through only when paused. A target that reached
+                        // its end date finished rather than being abandoned, so
+                        // it dims without being crossed out.
+                        fontSize: 14, color: t.archived || M.hasEnded(t) ? C.ink3 : C.ink,
+                        textDecorationLine: t.archived ? "line-through" : "none",
+                      }}>{t.name}</Text>
+                      <Text style={[S.tiny, { marginTop: 2 }]}>
+                        {/* Which area it came from, but only when the heading is
+                            not already saying it. */}
+                        {!g.catId && cat ? `${cat.emoji} ${cat.name} · ` : ""}
+                        {M.describe(t)}{t.archived ? " · paused" : ""}
+                      </Text>
+                    </View>
+                    <Mini glyph={t.archived ? "▶" : "❚❚"} onPress={() => update((d) => ({
+                      ...d, targets: d.targets.map((x) => x.id === t.id ? { ...x, archived: !x.archived } : x),
+                    }))} />
+                    <Mini glyph="✎" onPress={() => setEditTarget({ target: t })} />
+                    <Mini glyph="✕" danger onPress={() => confirm(
+                      `Delete "${t.name}"?`,
+                      "Its logged history goes too. To keep the history, pause it instead.",
+                      () => update((d) => {
+                        const log = {};
+                        Object.entries(d.log || {}).forEach(([k, v]) => {
+                          const { [t.id]: _drop, ...rest } = v;
+                          if (Object.keys(rest).length) log[k] = rest;
+                        });
+                        return { ...d, log, targets: d.targets.filter((x) => x.id !== t.id) };
+                      })
+                    )} />
+                  </View>
+                </View>
+              );
+            })}
 
             <View style={{ paddingHorizontal: 13, paddingBottom: 12, paddingTop: ts.length ? 8 : 0 }}>
               <View style={[S.row, { flexWrap: "wrap" }]}>
-                <Chip label="+ New target" onPress={() => setEditTarget({ catId: cat.id })} />
+                {/* Adding from inside a cadence starts the new target at that
+                    cadence — the category is the first field in the form, and
+                    the suggestions belong to a category so they wait for one. */}
+                <Chip label="+ New target"
+                      onPress={() => setEditTarget({ catId: g.catId || cats[0]?.id, seed: g.seed })} />
                 {chips.map((s) => (
-                  <Chip key={s.name} label={`+ ${s.name}`} onPress={() => addSuggestion(cat.id, s)} />
+                  <Chip key={s.name} label={`+ ${s.name}`} onPress={() => addSuggestion(g.catId, s)} />
                 ))}
               </View>
             </View>
@@ -493,13 +531,17 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
   const existing = state?.target;
   const [form, setForm] = useState(null);
 
-  const key = state ? (existing?.id || `new:${state.catId}`) : null;
+  const key = state
+    ? (existing?.id || `new:${state.catId}:${JSON.stringify(state.seed || {})}`)
+    : null;
   const [seeded, setSeeded] = useState(null);
   if (state && seeded !== key) {
     setSeeded(key);
     setForm(existing ? { ...existing } : {
       name: "", catId: state.catId, kind: "tick", dir: "at_least", period: "day",
       goal: 1, unit: "", step: 1, days: [...M.ALL_DAYS], until: "", archived: false,
+      // Started from inside a cadence, it begins at that cadence.
+      ...(state.seed || {}),
     });
   }
   if (!state && seeded !== null) setSeeded(null);
@@ -851,6 +893,10 @@ function Sheet({ title, onClose, children }) {
 }
 
 /* Only ever two or three options wide — the long lists became dropdowns. */
+/* The model names a tone rather than a colour, so the palette stays in the
+   one place that owns it. */
+const TONE = { good: C.good, accent: C.accent, over: C.over };
+
 const Seg = ({ on, label, sub, onPress }) => (
   <Pressable onPress={onPress}
     style={{

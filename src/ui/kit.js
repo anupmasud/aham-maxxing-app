@@ -312,7 +312,7 @@ export function CatHeader({ cat, right }) {
   return (
     <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, backgroundColor: C.sunk, gap: 9 }]}>
       <View style={{ width: 4, alignSelf: "stretch", borderRadius: 2, backgroundColor: cat.color }} />
-      <Text style={{ fontSize: 15 }}>{cat.emoji}</Text>
+      {!!cat.emoji && <Text style={{ fontSize: 15 }}>{cat.emoji}</Text>}
       <Text style={[S.h2, { flex: 1, fontSize: 15 }]} numberOfLines={1}>{cat.name}</Text>
       {right}
     </View>

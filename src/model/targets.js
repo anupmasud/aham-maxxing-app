@@ -515,6 +515,18 @@ export function planStatus(t, dayKey, log, plans) {
   };
 }
 
+/* Drops every target's recurring weekday plan.
+
+   The targets, their goals, their end dates and everything ever logged are
+   left exactly as they are — this clears only the weekdays the plan suggests
+   them on. Date-specific decisions live in doc.plans and are deliberately not
+   touched: those were made about one particular day, not about the rhythm. */
+export const clearWeeklyPlans = (targets) => (targets || []).map((t) => ({ ...t, plan: {} }));
+
+/* How many targets currently ask for particular weekdays, for saying out loud
+   what clearing them would cost. */
+export const plannedCount = (targets) => (targets || []).filter(hasPlan).length;
+
 /* Does this target have any plan at all? Drives whether the week view bothers
    showing ghosts for what was intended. */
 export const hasPlan = (t) =>

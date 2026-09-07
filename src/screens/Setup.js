@@ -42,7 +42,11 @@ export default function Setup({
       }],
     }));
 
-  const confirm = (title, message, onConfirm) => setConfirming({ title, message, onConfirm });
+  /* The confirm button says Delete unless told otherwise, which is right for
+     the three things here that really do delete and wrong for anything else —
+     a dialog that says Delete when nothing is being deleted reads as a threat. */
+  const confirm = (title, message, onConfirm, confirmLabel) =>
+    setConfirming({ title, message, onConfirm, confirmLabel });
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
@@ -157,6 +161,26 @@ export default function Setup({
           </View>
         );
       })}
+
+      {M.plannedCount(doc.targets) > 0 && (
+        <View style={[S.card, S.cardPad]}>
+          <Text style={[S.h2, { marginBottom: 6 }]}>Weekly plan</Text>
+          <Text style={S.muted}>
+            {M.plannedCount(doc.targets)} of your targets currently suggest particular
+            weekdays. Clearing that leaves every target, every goal and everything you
+            have logged exactly as it is — it only stops the plan proposing days you
+            did not choose.
+          </Text>
+          <Btn label="Clear every recurring plan" onPress={() => confirm(
+            "Clear the weekly plan?",
+            `${M.plannedCount(doc.targets)} target${M.plannedCount(doc.targets) > 1 ? "s" : ""} will stop asking for particular weekdays. ` +
+            "No target is removed, no goal changes, and nothing you have logged is touched. " +
+            "Plans you made for one particular date are kept.",
+            () => update((d) => ({ ...d, targets: M.clearWeeklyPlans(d.targets) })),
+            "Clear the plan"
+          )} />
+        </View>
+      )}
 
       <View style={[S.card, S.cardPad]}>
         <Text style={[S.h2, { marginBottom: 6 }]}>Starting set</Text>

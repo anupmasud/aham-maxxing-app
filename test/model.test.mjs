@@ -591,5 +591,38 @@ console.log("\n23. the same targets, arranged two ways");
   eq("two modes offered", M.GROUP_MODES.map((m) => m.id), ["category", "cadence"]);
 }
 
+console.log("\n24. clearing the weekly plan");
+{
+  const ts = [
+    { id: "a", name: "Steps", goal: 8000, plan: { 2: true }, types: [], until: "2026-12-31" },
+    { id: "b", name: "Strength", goal: 4, plan: { 0: ["arms"], 3: ["legs"] },
+      types: [{ id: "arms", name: "Arms" }, { id: "legs", name: "Legs" }] },
+    { id: "c", name: "Floss", goal: 1, plan: {}, types: [] },
+  ];
+  eq("two of the three ask for weekdays", M.plannedCount(ts), 2);
+
+  const cleared = M.clearWeeklyPlans(ts);
+  eq("no plan left anywhere", cleared.map((t) => t.plan), [{}, {}, {}]);
+  eq("and none counted", M.plannedCount(cleared), 0);
+
+  // Everything that is not the plan survives untouched.
+  eq("targets all still here", cleared.map((t) => t.name), ["Steps", "Strength", "Floss"]);
+  eq("goals untouched", cleared.map((t) => t.goal), [8000, 4, 1]);
+  eq("kinds untouched", cleared[1].types.map((x) => x.name), ["Arms", "Legs"]);
+  eq("end dates untouched", cleared[0].until, "2026-12-31");
+  eq("the originals are not mutated", ts[0].plan, { 2: true });
+
+  // Date-specific decisions are a different thing and are left alone.
+  const wed = M.keyOf(M.addDays(M.startOfWeek(new Date()), 2));
+  const plans = M.setPlanOverride({}, ts[0], wed, true);
+  eq("a one-off plan still stands after clearing",
+     M.planFor(cleared[0], wed, plans).planned, true);
+  eq("and is still an override", M.planFor(cleared[0], wed, plans).source, "override");
+
+  eq("clearing nothing is safe", M.clearWeeklyPlans([]), []);
+  eq("as is clearing undefined", M.clearWeeklyPlans(undefined), []);
+  eq("counting undefined is zero", M.plannedCount(undefined), 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

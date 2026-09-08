@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { C, S, Bar, Btn, CatHeader, Note, Ring, Stepper, Tick } from "../ui/kit";
+import { C, S, Bar, Btn, CatHeader, Note, Ring, Seg, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
+import { GROUP_MODES, groupTargets } from "../model/grouping";
 import * as M from "../model/targets";
+
+/* The model names a tone; the palette stays here. */
+const TONE = { good: C.good, accent: C.accent, over: C.over };
 
 const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 const fmtBrief = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -14,6 +18,11 @@ export default function Today({ doc, update, day, setDay }) {
   const [editing, setEditing] = useState(null);   // { target, dayKey }
   const [planning, setPlanning] = useState(null); // { target, dayKey }
   const [noting, setNoting] = useState(null);     // { target, dayKey }
+
+  /* The same lens Setup offers, over the same targets. Kept per screen rather
+     than shared: organising is a job you do by area, and getting through the
+     day can reasonably be a different one. */
+  const [grouping, setGrouping] = useState("category");
   const log = doc.log || {};
   const notes = doc.notes || {};
   const targets = doc.targets || [];
@@ -26,16 +35,15 @@ export default function Today({ doc, update, day, setDay }) {
   const writeNote = (target, dayKey, text) =>
     update((d) => ({ ...d, notes: M.setDayNote(d.notes || {}, target.id, dayKey, text) }));
 
-  const cats = (doc.categories || [])
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((cat) => ({
-      cat,
-      rows: targets
-        .filter((t) => t.catId === cat.id && !t.archived && M.appliesOn(t, day))
-        .sort((a, b) => a.order - b.order),
-    }))
-    .filter((g) => g.rows.length);
+  /* Only what this day actually asks for, then arranged. Grouping the whole
+     library and filtering afterwards would leave headings with nothing under
+     them on a day the category is not scheduled. */
+  const dueToday = targets.filter((t) => !t.archived && M.appliesOn(t, day));
+  const catById = {};
+  (doc.categories || []).forEach((c) => { catById[c.id] = c; });
+
+  const groups = groupTargets({ ...doc, targets: dueToday }, grouping)
+    .filter((g) => g.targets.length);
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
@@ -91,31 +99,48 @@ export default function Today({ doc, update, day, setDay }) {
         </Text>
       )}
 
-      {cats.length === 0 && (
+      {groups.length === 0 && (
         <Text style={S.empty}>Nothing scheduled for this day.{"\n"}Add targets in Setup.</Text>
       )}
 
-      {cats.map(({ cat, rows }) => {
+      {/* Worth offering only once there is enough here for the arrangement to
+          make a difference. */}
+      {dueToday.length > 3 && (
+        <View style={[S.row, { gap: 6, marginBottom: 12 }]}>
+          {GROUP_MODES.map((m) => (
+            <Seg key={m.id} on={grouping === m.id} label={m.label} sub={m.sub}
+                 onPress={() => setGrouping(m.id)} />
+          ))}
+        </View>
+      )}
+
+      {groups.map((g) => {
+        const rows = g.targets;
+        const cat = g.catId ? catById[g.catId] : null;
         const done = rows.filter((t) => M.progress(t, day, log).met).length;
         return (
-          <View key={cat.id} style={S.card}>
+          <View key={g.id} style={S.card}>
             <CatHeader
-              cat={cat}
+              cat={{ name: g.name, emoji: g.emoji, color: g.color || TONE[g.tone] }}
               right={<Text style={S.tiny}>{done}/{rows.length}</Text>}
             />
             {/* Whatever belongs to the whole area — the warm-up everything here
                 starts with, the videos you follow — read before the first row
-                rather than repeated on each one. */}
-            <Note text={cat.note} full style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
+                rather than repeated on each one. Only a real category has one. */}
+            {!!cat && (
+              <Note text={cat.note} full style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
+            )}
             {rows.map((t, i) => (
               <View key={t.id}>
                 {i > 0 && <View style={S.rule} />}
                 {M.isFuture(day) ? (
                   <PlannedRow t={t} day={day} plans={doc.plans}
+                              badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
                               onPress={() => setPlanning({ target: t, dayKey: day })} />
                 ) : M.hasTypes(t) ? (
                   <TypedRow
                     t={t} day={day} log={log}
+                    badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
                     note={M.dayNote(notes, t.id, day)}
                     onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggleType={(id) => setLog((l) => M.toggleType(l, t, day, id))}
@@ -123,6 +148,7 @@ export default function Today({ doc, update, day, setDay }) {
                 ) : (
                   <TargetRow
                     t={t} day={day} log={log}
+                    badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
                     note={M.dayNote(notes, t.id, day)}
                     onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggle={() => setLog((l) => M.toggle(l, t, day))}
@@ -165,7 +191,7 @@ export default function Today({ doc, update, day, setDay }) {
 
 /* ------------------------------------------------------------------ rows -- */
 
-function TargetRow({ t, day, log, note, onNote, onToggle, onStep, onEdit }) {
+function TargetRow({ t, day, log, note, badge, onNote, onToggle, onStep, onEdit }) {
   const p = M.progress(t, day, log);
   const today = M.valueOn(log, t.id, day);
   const weekly = t.period === "week";
@@ -205,7 +231,11 @@ function TargetRow({ t, day, log, note, onNote, onToggle, onStep, onEdit }) {
         onPress={onToggle}
       />
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14.5, color: p.met && !ceiling ? C.ink2 : C.ink }}>{t.name}</Text>
+        <Text style={{ fontSize: 14.5, color: p.met && !ceiling ? C.ink2 : C.ink }}>
+          {/* Grouped by cadence the heading no longer says which area this is,
+              so the row carries its category's mark. */}
+          {badge ? `${badge}  ` : ""}{t.name}
+        </Text>
         <Text style={[S.tiny, { marginTop: 2 }]}>{meta}</Text>
         {(t.kind === "amount" || weekly) && (
           <Bar ratio={p.ratio} over={p.over} warn={ceiling && p.ratio > 0.75} />
@@ -324,7 +354,7 @@ function DayNoteSheet({ state, note, onSave, onClose }) {
 /* A day that has not happened yet. It shows what the plan asked for and
    nothing else — no circle to tap, because recording a session before it has
    happened would put work into the week's totals that nobody has done. */
-function PlannedRow({ t, day, plans, onPress }) {
+function PlannedRow({ t, day, plans, badge, onPress }) {
   const p = M.planFor(t, day, plans);
 
   return (
@@ -338,7 +368,7 @@ function PlannedRow({ t, day, plans, onPress }) {
         borderColor: p.planned ? C.ink2 : C.rule,
       }} />
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14.5, color: C.ink }}>{t.name}</Text>
+        <Text style={{ fontSize: 14.5, color: C.ink }}>{badge ? `${badge}  ` : ""}{t.name}</Text>
         <Text style={[S.tiny, { marginTop: 2 }]}>
           {p.planned
             ? (p.types.length ? `Planned: ${p.types.map((id) => M.typeName(t, id)).join(", ")}` : "Planned")
@@ -354,7 +384,7 @@ function PlannedRow({ t, day, plans, onPress }) {
 /* A target with types: the weekly total, then one chip per type. Chips the
    plan asked for today are outlined, so the row reads as "here is what you
    said you would do" before it reads as a list of options. */
-function TypedRow({ t, day, log, note, onNote, onToggleType }) {
+function TypedRow({ t, day, log, note, badge, onNote, onToggleType }) {
   const p = M.progress(t, day, log);
   const done = M.typesOn(log, t.id, day);
   const planned = M.plannedOn(t, day);
@@ -364,7 +394,9 @@ function TypedRow({ t, day, log, note, onNote, onToggleType }) {
       <View style={[S.row, { gap: 11 }]}>
         <Tick on={p.met} onPress={() => {}} disabled />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14.5, color: p.met ? C.ink2 : C.ink }}>{t.name}</Text>
+          <Text style={{ fontSize: 14.5, color: p.met ? C.ink2 : C.ink }}>
+            {badge ? `${badge}  ` : ""}{t.name}
+          </Text>
           <Text style={[S.tiny, { marginTop: 2 }]}>
             <Text style={{ color: p.met ? C.good : C.ink2, fontWeight: p.met ? "600" : "400" }}>
               {`${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} this week`}

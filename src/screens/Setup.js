@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn, CatHeader, Chip, Confirm, Note, Select } from "../ui/kit";
+import { C, S, Btn, CatHeader, Chip, Confirm, Note, Seg, Select } from "../ui/kit";
 import * as M from "../model/targets";
 import {
   CATEGORY_COLORS, TEMPLATES, UNITS, addTemplateCategories, suggestionsFor, templateById,
@@ -971,18 +971,6 @@ const NoteField = ({ value, onChange, hint, placeholder }) => (
       Links beginning http:// or https:// become tappable.
     </Text>
   </>
-);
-
-const Seg = ({ on, label, sub, onPress }) => (
-  <Pressable onPress={onPress}
-    style={{
-      flex: 1, borderWidth: 1, borderRadius: 9, alignItems: "center",
-      paddingVertical: 9, paddingHorizontal: 6,
-      borderColor: on ? C.ink : C.rule, backgroundColor: on ? C.ink : C.card,
-    }}>
-    <Text style={{ fontSize: 13, fontWeight: "600", color: on ? C.paper : C.ink2 }}>{label}</Text>
-    {!!sub && <Text style={{ fontSize: 10, color: on ? C.paper : C.ink3, opacity: 0.8, marginTop: 1 }}>{sub}</Text>}
-  </Pressable>
 );
 
 const Mini = ({ glyph, onPress, danger }) => (

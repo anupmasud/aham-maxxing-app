@@ -388,6 +388,21 @@ export function Note({ text, full = false, style }) {
   );
 }
 
+/* A segmented choice: two or three mutually exclusive options side by side.
+   Shared because the same control now picks the arrangement on two different
+   screens, and two copies of it would drift. */
+export const Seg = ({ on, label, sub, onPress }) => (
+  <Pressable onPress={onPress}
+    style={{
+      flex: 1, borderWidth: 1, borderRadius: 9, alignItems: "center",
+      paddingVertical: 9, paddingHorizontal: 6,
+      borderColor: on ? C.ink : C.rule, backgroundColor: on ? C.ink : C.card,
+    }}>
+    <Text style={{ fontSize: 13, fontWeight: "600", color: on ? C.paper : C.ink2 }}>{label}</Text>
+    {!!sub && <Text style={{ fontSize: 10, color: on ? C.paper : C.ink3, opacity: 0.8, marginTop: 1 }}>{sub}</Text>}
+  </Pressable>
+);
+
 export function CatHeader({ cat, right }) {
   return (
     <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, backgroundColor: C.sunk, gap: 9 }]}>

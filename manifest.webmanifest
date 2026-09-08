@@ -1,0 +1,24 @@
+{
+  "name": "AhamMaxxing",
+  "short_name": "AhamMaxxing",
+  "description": "Your data, in a folder of your own Google Drive.",
+  "start_url": "/aham-maxxing-app/",
+  "scope": "/aham-maxxing-app/",
+  "display": "standalone",
+  "background_color": "#FBF7F0",
+  "theme_color": "#FBF7F0",
+  "icons": [
+    {
+      "src": "/aham-maxxing-app/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/aham-maxxing-app/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

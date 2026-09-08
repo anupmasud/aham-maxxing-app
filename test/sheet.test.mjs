@@ -30,8 +30,9 @@ const doc = {
   createdAt: "2026-08-01T00:00:00.000Z",
   reminders: { enabled: true, hour: 20, minute: 30 },
   categories: [
-    { id: "c_move", name: "Movement", emoji: "🚶", color: "#3F7D5B", order: 0 },
-    { id: "c_limits", name: "Limits", emoji: "🍷", color: "#B4443A", order: 1 },
+    { id: "c_move", name: "Movement", emoji: "🚶", color: "#3F7D5B", order: 0,
+      note: "Warm-up first: https://youtube.com/watch?v=abc123" },
+    { id: "c_limits", name: "Limits", emoji: "🍷", color: "#B4443A", order: 1, note: "" },
   ],
   targets: [
     { id: "t_water", catId: "c_move", name: "Water", kind: "amount", dir: "at_least",
@@ -317,6 +318,27 @@ console.log("\n9. notes ride along with the target");
   eq("and everything else is intact", noNotes.targets.map((t) => t.goal), [3, 5, 1, 6]);
   eq("including the column before it", noNotes.targets.map((t) => t.archived),
      [false, false, true, false]);
+}
+
+console.log("\n10. a category carries notes too");
+{
+  const tabs = M.docToSheets(doc);
+  const head = tabs.Categories[0];
+  eq("its own column", head[head.length - 1], "note");
+  eq("written out", tabs.Categories[1][5], "Warm-up first: https://youtube.com/watch?v=abc123");
+  eq("blank when there is none", tabs.Categories[2][5], "");
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("read back with the link intact",
+     back.categories[0].note, "Warm-up first: https://youtube.com/watch?v=abc123");
+  eq("and no note stays no note", back.categories[1].note, "");
+
+  // A Categories tab written before the column existed.
+  const older = { ...tabs, Categories: tabs.Categories.map((r) => r.slice(0, 5)) };
+  const read = M.sheetsToDoc(older, doc);
+  eq("an older sheet has no category notes", read.categories.map((c) => c.note), ["", ""]);
+  eq("names survive", read.categories.map((c) => c.name), ["Movement", "Limits"]);
+  eq("as does the order column beside it", read.categories.map((c) => c.order), [0, 1]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

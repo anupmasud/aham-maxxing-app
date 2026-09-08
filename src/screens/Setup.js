@@ -104,6 +104,13 @@ export default function Setup({
               </Text>
             )}
 
+            {/* A category's own notes, shown in full: it is one heading rather
+                than one of twenty rows, so there is room for it. */}
+            {!!(g.catId && catById[g.catId]?.note) && (
+              <Note text={catById[g.catId].note} full
+                    style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
+            )}
+
             {ts.map((t, i) => {
               const cat = catById[t.catId];
               return (
@@ -617,6 +624,13 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
           .map((c) => ({ value: c.id, label: `${c.emoji}  ${c.name}` }))}
       />
 
+      <NoteField
+        value={form.note}
+        onChange={(v) => set({ note: v })}
+        hint="The detail the name leaves out — what the session actually is, what counts, what to remember. It shows wherever you tick this off."
+        placeholder={"e.g. Hamstring curls x15, glute bridges x20, bird dog x10 each side\nhttps://youtube.com/watch?v=..."}
+      />
+
       <Text style={[S.label, { marginTop: 12 }]}>What are you tracking?</Text>
       <View style={[S.row, { gap: 6 }]}>
         <Seg on={form.kind === "tick"} label="Did it" sub="a tick" onPress={() => set({ kind: "tick" })} />
@@ -722,19 +736,6 @@ function TargetEditor({ state, doc, update, onClose, nextOrder }) {
           </View>
         </>
       )}
-
-      <Text style={[S.label, { marginTop: 16 }]}>Notes (optional)</Text>
-      <Text style={[S.tiny, { marginBottom: 6 }]}>
-        The detail the name leaves out — what the session actually is, what
-        counts, what to remember. It shows wherever you tick this off.
-      </Text>
-      <TextInput
-        style={[S.input, { minHeight: 78, textAlignVertical: "top" }]}
-        multiline
-        value={form.note || ""}
-        onChangeText={(v) => set({ note: v })}
-        placeholder={"e.g. Hamstring curls x15, glute bridges x20, bird dog x10 each side"}
-      />
 
       <EndDate form={form} set={set} />
 
@@ -865,7 +866,7 @@ function CategoryEditor({ state, update, onClose, nextOrder }) {
   const key = state ? (existing?.id || "new") : null;
   if (state && seeded !== key) {
     setSeeded(key);
-    setForm(existing ? { ...existing } : { name: "", emoji: "⭐", color: CATEGORY_COLORS[0] });
+    setForm(existing ? { ...existing } : { name: "", emoji: "⭐", color: CATEGORY_COLORS[0], note: "" });
   }
   if (!state && seeded !== null) setSeeded(null);
   if (!state || !form) return null;
@@ -873,9 +874,10 @@ function CategoryEditor({ state, update, onClose, nextOrder }) {
   const save = () => {
     const name = (form.name || "").trim();
     if (!name) return;
+    const clean = { ...form, name, note: (form.note || "").trim() };
     update((d) => existing
-      ? { ...d, categories: d.categories.map((c) => (c.id === existing.id ? { ...c, ...form, name } : c)) }
-      : { ...d, categories: [...d.categories, { ...form, name, id: M.uid("c_"), order: nextOrder(d.categories) }] });
+      ? { ...d, categories: d.categories.map((c) => (c.id === existing.id ? { ...c, ...clean } : c)) }
+      : { ...d, categories: [...d.categories, { ...clean, id: M.uid("c_"), order: nextOrder(d.categories) }] });
     onClose();
   };
 
@@ -893,6 +895,13 @@ function CategoryEditor({ state, update, onClose, nextOrder }) {
                      onChangeText={(v) => setForm((f) => ({ ...f, name: v }))} />
         </View>
       </View>
+
+      <NoteField
+        value={form.note}
+        onChange={(v) => setForm((f) => ({ ...f, note: v }))}
+        hint="Anything that belongs to the whole area rather than one target — a routine, a rule of thumb, links to the videos you follow."
+        placeholder={"e.g. Warm-up routine\nhttps://youtube.com/watch?v=..."}
+      />
 
       <Text style={[S.label, { marginTop: 12 }]}>Colour</Text>
       <View style={[S.row, { gap: 6, flexWrap: "wrap" }]}>
@@ -935,6 +944,27 @@ function Sheet({ title, onClose, children }) {
 /* The model names a tone rather than a colour, so the palette stays in the
    one place that owns it. */
 const TONE = { good: C.good, accent: C.accent, over: C.over };
+
+/* The notes box, identical for a target and for a category. It sits high in
+   both forms rather than at the end: a note is a description, it belongs
+   beside the name, and buried under the plan grid nobody finds it. */
+const NoteField = ({ value, onChange, hint, placeholder }) => (
+  <>
+    <Text style={[S.label, { marginTop: 12 }]}>Notes (optional)</Text>
+    <Text style={[S.tiny, { marginBottom: 6 }]}>{hint}</Text>
+    <TextInput
+      style={[S.input, { minHeight: 78, textAlignVertical: "top" }]}
+      multiline
+      value={value || ""}
+      onChangeText={onChange}
+      placeholder={placeholder}
+      autoCapitalize="sentences"
+    />
+    <Text style={[S.tiny, { marginTop: 4 }]}>
+      Links beginning http:// or https:// become tappable.
+    </Text>
+  </>
+);
 
 const Seg = ({ on, label, sub, onPress }) => (
   <Pressable onPress={onPress}

@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 export const C = {
@@ -318,12 +318,56 @@ export function Confirm({ state, onClose }) {
 
    The rule down the left says "this is written by you, not by the app",
    which matters where it sits under a line of the app's own prose. */
+/* Only http(s) links are picked out. A bare "youtube.com/watch?v=..." is a
+   link to a person and ambiguous to a regex — "see you at 3 p.m. sharp" has a
+   dot in it too — and turning ordinary prose blue is worse than making someone
+   paste a scheme. The trailing-punctuation class keeps a full stop at the end
+   of a sentence out of the URL. */
+const LINK_RE = /(https?:\/\/[^\s<>()[\]]+[^\s<>()[\].,;:!?'"])/g;
+
+export const linkParts = (text) =>
+  String(text || "").split(LINK_RE).filter((part) => part !== "");
+
+export const isLink = (part) => /^https?:\/\//.test(part);
+
+/* Shortens a URL for reading without hiding where it goes: the host stays, the
+   query string is what gets dropped, because a v= id tells you nothing and
+   costs three lines on a phone. */
+export function linkLabel(url) {
+  const bare = String(url).replace(/^https?:\/\//, "").replace(/^www\./, "");
+  const [head] = bare.split("?");
+  const trimmed = head.replace(/\/$/, "");
+  return trimmed.length > 42 ? `${trimmed.slice(0, 41)}…` : trimmed;
+}
+
 export function Note({ text, full = false, style }) {
   const [open, setOpen] = useState(false);
   const body = String(text || "").trim();
   if (!body) return null;
 
   const shown = full || open;
+  const parts = linkParts(body);
+
+  /* A link has to be tappable, and a tap on the note itself opens and closes
+     it — so the link swallows its own press rather than letting it through and
+     collapsing the very thing you were reading. */
+  const rendered = parts.map((part, i) =>
+    isLink(part) ? (
+      <Text
+        key={i}
+        style={{ color: C.accent, textDecorationLine: "underline" }}
+        onPress={(e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          Linking.openURL(part).catch(() => {});
+        }}
+      >
+        {linkLabel(part)}
+      </Text>
+    ) : (
+      part
+    )
+  );
+
   const inner = (
     <View style={[{ flexDirection: "row", gap: 7, marginTop: 5 }, style]}>
       <View style={{ width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.rule }} />
@@ -331,7 +375,7 @@ export function Note({ text, full = false, style }) {
         style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2 }}
         numberOfLines={shown ? undefined : 1}
       >
-        {body}
+        {rendered}
       </Text>
     </View>
   );

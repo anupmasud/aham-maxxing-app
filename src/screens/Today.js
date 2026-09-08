@@ -99,6 +99,10 @@ export default function Today({ doc, update, day, setDay }) {
               cat={cat}
               right={<Text style={S.tiny}>{done}/{rows.length}</Text>}
             />
+            {/* Whatever belongs to the whole area — the warm-up everything here
+                starts with, the videos you follow — read before the first row
+                rather than repeated on each one. */}
+            <Note text={cat.note} full style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
             {rows.map((t, i) => (
               <View key={t.id}>
                 {i > 0 && <View style={S.rule} />}

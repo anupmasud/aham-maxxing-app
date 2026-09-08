@@ -5,7 +5,7 @@
    properly, because this is the layer where data gets lost if anything is
    wrong.
 
-     Categories  id · name · emoji · colour · order
+     Categories  id · name · emoji · colour · order · note
      Targets     id · category · name · kind · direction · period · goal ·
                  unit · step · days · planned · until · order · archived · note
      Types       one row per kind, with its weekly minimum and planned days
@@ -100,7 +100,7 @@ export function untilIn(v) {
 
 /* --------------------------------------------------------------- headers -- */
 
-export const CAT_HEAD = ["id", "name", "emoji", "colour", "order"];
+export const CAT_HEAD = ["id", "name", "emoji", "colour", "order", "note"];
 /* `note` sits last on purpose: it is the only free-text column and the only
    one that can run to a paragraph, and a wide cell in the middle pushes every
    short column off the screen. */
@@ -116,7 +116,7 @@ export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
 export function categoriesOut(doc) {
   return [CAT_HEAD, ...doc.categories
     .slice().sort((a, b) => a.order - b.order)
-    .map((c) => [c.id, c.name, c.emoji || "", c.color || "", c.order])];
+    .map((c) => [c.id, c.name, c.emoji || "", c.color || "", c.order, c.note || ""])];
 }
 
 export function targetsOut(doc) {
@@ -291,6 +291,7 @@ export function sheetsToDoc(tabs, base = {}) {
     emoji: norm(cat(r, "emoji")) || "⭐",
     color: norm(cat(r, "colour")) || "#3F7D5B",
     order: num(cat(r, "order"), i),
+    note: norm(cat(r, "note")),
   }));
 
   const byCatName = {};

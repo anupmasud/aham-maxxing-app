@@ -672,5 +672,69 @@ console.log("\n25. a note about one target on one day");
   eq("the day still scores as it did", M.progress(walk, A, {}).met, false);
 }
 
+console.log("\n26. clearing everything up to a date");
+{
+  const doc = {
+    createdAt: "2026-08-31T09:00:00.000Z",
+    targets: [T.walk, T.steps],
+    log: {
+      "2026-08-31": { walk: 30, steps: 8000 },
+      "2026-09-01": { walk: 20 },
+      "2026-09-06": { steps: 5000 },
+      "2026-09-07": { walk: 45 },
+      "2026-09-08": { steps: 9000 },
+    },
+    notes: {
+      "2026-09-01": { walk: "trial run" },
+      "2026-09-07": { walk: "the real start" },
+    },
+    plans: { "2026-09-02": { walk: true }, "2026-09-09": { walk: true } },
+  };
+
+  const cut = "2026-09-06";
+  const before = M.historyBefore(doc, cut);
+  eq("four days would go", before.days, 4);
+  eq("four entries with them", before.entries, 4);
+  eq("and one note", before.notes, 1);
+  eq("and one date-specific plan", before.plans, 1);
+  eq("from", before.first, "2026-08-31");
+  eq("to", before.last, "2026-09-06");
+
+  const after = M.clearHistoryBefore(doc, cut);
+  eq("only the days after the cut remain",
+     Object.keys(after.log).sort(), ["2026-09-07", "2026-09-08"]);
+  eq("with their values untouched", after.log["2026-09-07"].walk, 45);
+  eq("notes cut the same way", Object.keys(after.notes), ["2026-09-07"]);
+  eq("and plans", Object.keys(after.plans), ["2026-09-09"]);
+  eq("targets are not history and stay", after.targets.length, 2);
+
+  /* The start date moves with the data. Insights opens its window at the
+     earlier of createdAt and the first logged day, so leaving it behind would
+     keep counting the emptied days — as misses. */
+  eq("the start date moves to the day after the cut",
+     M.keyOf(new Date(after.createdAt)), "2026-09-07");
+
+  // Clearing older history says nothing about a document that began later.
+  const later = { ...doc, createdAt: "2026-09-20T09:00:00.000Z" };
+  eq("a later start is left alone",
+     M.clearHistoryBefore(later, cut).createdAt, "2026-09-20T09:00:00.000Z");
+
+  // The cut is inclusive: the named day goes too.
+  eq("the cut day itself is gone", after.log[cut], undefined);
+  eq("the day after it is not", !!after.log["2026-09-07"], true);
+
+  // Nothing to clear, and nonsense in.
+  eq("a date before everything takes nothing",
+     Object.keys(M.clearHistoryBefore(doc, "2026-01-01").log).length, 5);
+  eq("and reports nothing", M.historyBefore(doc, "2026-01-01").days, 0);
+  eq("junk changes nothing", M.clearHistoryBefore(doc, "not a date"), doc);
+  eq("and reports nothing either", M.historyBefore(doc, "").days, 0);
+
+  // It is not destructive of anything but history.
+  const kept = M.clearHistoryBefore(doc, cut);
+  eq("the document is not mutated", Object.keys(doc.log).length, 5);
+  eq("and the result is a new one", kept === doc, false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -529,6 +529,65 @@ export function pruneNotes(notes, targets) {
   return out;
 }
 
+/* ------------------------------------------------------- clearing history --
+   Throwing away everything up to and including one date.
+
+   The case this is for: a week of trying the app out, then a day you decide
+   is the real beginning. Those first entries are not wrong exactly, they are
+   just not yours — and left in place they sit in every rate and every trend
+   as though they were.
+
+   It moves the start date with them. Insights begins the window at whichever
+   is earlier, the day the document was created or the first day anything was
+   logged, so deleting the entries alone would leave the empty days before
+   your real start still being counted, and counted as misses. */
+
+/* What clearing would take, so the question can be asked with numbers in it
+   rather than "are you sure". */
+export function historyBefore(doc, dayKey) {
+  if (!isDateKey(dayKey)) return { days: 0, entries: 0, notes: 0, plans: 0, first: null, last: null };
+
+  const upTo = (map) => Object.keys(map || {}).filter((d) => isDateKey(d) && d <= dayKey);
+  const count = (map) =>
+    upTo(map).reduce((n, d) => n + Object.keys(map[d] || {}).length, 0);
+
+  const days = [...new Set([
+    ...upTo(doc.log), ...upTo(doc.notes), ...upTo(doc.plans),
+  ])].sort();
+
+  return {
+    days: days.length,
+    entries: count(doc.log),
+    notes: count(doc.notes),
+    plans: count(doc.plans),
+    first: days[0] || null,
+    last: days[days.length - 1] || null,
+  };
+}
+
+export function clearHistoryBefore(doc, dayKey) {
+  if (!isDateKey(dayKey)) return doc;
+
+  const keep = (map) => Object.fromEntries(
+    Object.entries(map || {}).filter(([d]) => isDateKey(d) && d > dayKey)
+  );
+
+  /* The day after the cut is the new beginning — unless the document already
+     began later than that, in which case clearing older history says nothing
+     about when you started and the date stays where it is. */
+  const start = keyOf(addDays(parseKey(dayKey), 1));
+  const createdKey = doc.createdAt ? keyOf(new Date(doc.createdAt)) : start;
+  const createdAt = createdKey > start ? doc.createdAt : parseKey(start).toISOString();
+
+  return {
+    ...doc,
+    createdAt,
+    log: keep(doc.log),
+    notes: keep(doc.notes),
+    plans: keep(doc.plans),
+  };
+}
+
 /* The weekdays a target is planned for, for showing and for editing. */
 export function plannedDays(t) {
   return ALL_DAYS.filter((d) => planEntry(t, d).planned);

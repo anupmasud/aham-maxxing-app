@@ -192,6 +192,8 @@ export default function Setup({
         </View>
       )}
 
+      <ClearHistory doc={doc} update={update} confirm={confirm} />
+
       <View style={[S.card, S.cardPad]}>
         <Text style={[S.h2, { marginBottom: 6 }]}>Starting set</Text>
         <Text style={S.muted}>
@@ -951,6 +953,83 @@ function Sheet({ title, onClose, children }) {
 /* The model names a tone rather than a colour, so the palette stays in the
    one place that owns it. */
 const TONE = { good: C.good, accent: C.accent, over: C.over };
+
+/* Throwing away the days before you really started.
+
+   Typed rather than picked, for the same reason the end date is, and shown
+   with the count of what would actually go rather than a bare "are you sure":
+   the number is the thing that tells you whether the date in the box is the
+   one you meant. */
+function ClearHistory({ doc, update, confirm }) {
+  const [typed, setTyped] = useState("");
+  const cut = M.isDateKey(typed) ? typed : "";
+  const found = M.historyBefore(doc, cut);
+
+  const logged = Object.keys(doc.log || {}).filter(M.isDateKey).sort();
+  if (!logged.length) return null;
+
+  const pretty = (k) =>
+    M.parseKey(k).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+  const bits = [
+    found.entries ? `${found.entries} entr${found.entries === 1 ? "y" : "ies"}` : "",
+    found.notes ? `${found.notes} note${found.notes === 1 ? "" : "s"}` : "",
+    found.plans ? `${found.plans} planned day${found.plans === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+
+  return (
+    <View style={[S.card, S.cardPad]}>
+      <Text style={[S.h2, { marginBottom: 6 }]}>Clear earlier history</Text>
+      <Text style={S.muted}>
+        For when the first days were you trying the app out rather than counting.
+        Everything up to and including the date below is removed, and the start
+        date moves with it so the emptied days stop being counted as missed.
+        Targets, goals and notes attached to a target are not touched.
+      </Text>
+
+      <Text style={[S.label, { marginTop: 12 }]}>Remove everything up to and including</Text>
+      <View style={[S.row, { flexWrap: "wrap", marginBottom: 8 }]}>
+        <Chip label="Yesterday"
+              onPress={() => setTyped(M.keyOf(M.addDays(new Date(), -1)))} />
+        <Chip label="Before this week"
+              onPress={() => setTyped(M.keyOf(M.addDays(M.startOfWeek(new Date()), -1)))} />
+        {!!typed && <Chip label="✕  Clear" onPress={() => setTyped("")} />}
+      </View>
+      <TextInput
+        style={S.input}
+        value={typed}
+        onChangeText={setTyped}
+        placeholder="YYYY-MM-DD"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
+      <Text style={[S.tiny, { marginTop: 5, color: typed && !cut ? C.warn : C.ink3 }]}>
+        {!typed
+          ? `You have logged ${logged.length} day${logged.length === 1 ? "" : "s"}, ${pretty(logged[0])} onwards.`
+          : !cut
+            ? "Not a date yet — use YYYY-MM-DD."
+            : found.days
+              ? `${found.days} day${found.days === 1 ? "" : "s"} would go — ${bits.join(", ")} — ${pretty(found.first)} to ${pretty(found.last)}.`
+              : "Nothing recorded on or before that date."}
+      </Text>
+
+      <Btn
+        danger
+        disabled={!cut || !found.days}
+        label={found.days ? `Delete ${found.days} day${found.days === 1 ? "" : "s"}` : "Delete"}
+        onPress={() => confirm(
+          `Delete everything up to ${pretty(cut)}?`,
+          `${bits.join(", ")} across ${found.days} day${found.days === 1 ? "" : "s"} will be removed, ` +
+          "and this cannot be undone from inside the app. Your targets and their settings stay exactly as they are. " +
+          "Export a CSV first if you want a copy.",
+          () => { update((d) => M.clearHistoryBefore(d, cut)); setTyped(""); },
+          "Delete history"
+        )}
+      />
+    </View>
+  );
+}
 
 /* The notes box, identical for a target and for a category. It sits high in
    both forms rather than at the end: a note is a description, it belongs

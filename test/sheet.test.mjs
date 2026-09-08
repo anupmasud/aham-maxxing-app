@@ -50,6 +50,10 @@ const doc = {
       period: "week", goal: 6, unit: "units", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 3,
       archived: false, note: "", types: [], plan: {} },
   ],
+  notes: {
+    "2026-09-01": { t_str: 'Knee clicked on the third set. Dropped to 40kg, "fine after".' },
+    "2026-09-02": { t_water: "Travelling, only had a bottle." },
+  },
   log: {
     "2026-09-01": { t_water: 2.75, t_str: { n: 2, v: ["ty_lymph", "ty_arms"] }, t_floss: true },
     "2026-09-02": { t_water: 3, t_booze: 4 },
@@ -60,8 +64,8 @@ const doc = {
 console.log("\n1. what the tabs look like");
 {
   const tabs = M.docToSheets(doc);
-  eq("six tabs", Object.keys(tabs).sort(),
-     ["Categories", "Log", "Plan", "Settings", "Targets", "Types"]);
+  eq("seven tabs", Object.keys(tabs).sort(),
+     ["Categories", "Log", "Notes", "Plan", "Settings", "Targets", "Types"]);
   eq("targets carry the category by name", tabs.Targets[1][col("category")], "Movement");
   eq("restricted days written as names", tabs.Targets[3][col("days")], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][col("days")], "All");
@@ -339,6 +343,41 @@ console.log("\n10. a category carries notes too");
   eq("an older sheet has no category notes", read.categories.map((c) => c.note), ["", ""]);
   eq("names survive", read.categories.map((c) => c.name), ["Movement", "Limits"]);
   eq("as does the order column beside it", read.categories.map((c) => c.order), [0, 1]);
+}
+
+console.log("\n11. a note for one target on one day");
+{
+  const tabs = M.docToSheets(doc);
+  eq("a row per note, in date order", tabs.Notes.slice(1).map((r) => [r[0], r[2]]),
+     [["2026-09-01", "t_str"], ["2026-09-02", "t_water"]]);
+  eq("the target's name rides along", tabs.Notes[1][1], "Strength training");
+  eq("quotes and full stops survive the write",
+     tabs.Notes[1][3], 'Knee clicked on the third set. Dropped to 40kg, "fine after".');
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("read back onto the right day and target",
+     M.dayNote(back.notes, "t_str", "2026-09-01"),
+     'Knee clicked on the third set. Dropped to 40kg, "fine after".');
+  eq("and the other one", M.dayNote(back.notes, "t_water", "2026-09-02"), "Travelling, only had a bottle.");
+  eq("a day with no note has none", M.dayNote(back.notes, "t_str", "2026-09-03"), "");
+
+  // Renaming a target in the sheet keeps its diary: notes are joined by id.
+  const renamed = JSON.parse(JSON.stringify(tabs));
+  renamed.Targets[2][col("name")] = "Lifting";
+  renamed.Notes[1][1] = "Lifting";
+  eq("a rename does not orphan the note",
+     M.dayNote(M.sheetsToDoc(renamed, doc).notes, "t_str", "2026-09-01").slice(0, 12), "Knee clicked");
+
+  // A note whose target is gone is dropped rather than kept as a ghost.
+  const orphan = JSON.parse(JSON.stringify(tabs));
+  orphan.Notes.push(["2026-09-03", "Ghost", "t_gone", "should not survive"]);
+  eq("a note for a target that no longer exists is dropped",
+     Object.keys(M.sheetsToDoc(orphan, doc).notes).sort(), ["2026-09-01", "2026-09-02"]);
+
+  // A sheet written before the tab existed simply has no notes.
+  const older = { ...tabs, Notes: [] };
+  eq("an older sheet reads as no notes", M.sheetsToDoc(older, doc).notes, {});
+  eq("with everything else intact", M.sheetsToDoc(older, doc).targets.length, 4);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

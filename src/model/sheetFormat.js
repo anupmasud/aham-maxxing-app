@@ -11,6 +11,7 @@
      Types       one row per kind, with its weekly minimum and planned days
      Log         one row per date, one column per target
      Plan        one row per date-specific decision, including the noes
+     Notes       one row per day you wrote something about a target
      Settings    one row per setting
 
    Two principles throughout:
@@ -28,7 +29,7 @@ import { ALL_DAYS, DOW, isDateKey, round2 } from "./targets";
 
 export const TABS = {
   CATS: "Categories", TARGETS: "Targets", TYPES: "Types",
-  LOG: "Log", PLAN: "Plan", SETTINGS: "Settings",
+  LOG: "Log", PLAN: "Plan", NOTES: "Notes", SETTINGS: "Settings",
 };
 
 const norm = (v) => String(v == null ? "" : v).trim();
@@ -110,6 +111,7 @@ export const TGT_HEAD = ["id", "category", "name", "kind", "direction", "period"
 export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...DOW];
 export const SETTINGS_HEAD = ["setting", "value"];
 export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
+export const NOTE_HEAD = ["date", "target", "targetId", "note"];
 
 /* ------------------------------------------------------------------ out -- */
 
@@ -236,12 +238,31 @@ export function settingsOut(doc) {
   ];
 }
 
+/* What happened on a particular day, one row each — a diary in date order,
+   which is how you would want to read it in the sheet as well as in the app.
+   The target's name rides beside its id so the tab is legible on its own. */
+export function notesOut(doc) {
+  const byId = {};
+  doc.targets.forEach((t) => { byId[t.id] = t; });
+
+  const rows = [NOTE_HEAD];
+  Object.keys(doc.notes || {}).filter(isDateKey).sort().forEach((date) => {
+    Object.entries(doc.notes[date]).forEach(([id, text]) => {
+      const body = norm(text);
+      if (!body || !byId[id]) return;
+      rows.push([date, byId[id].name, id, body]);
+    });
+  });
+  return rows;
+}
+
 export const docToSheets = (doc) => ({
   [TABS.CATS]: categoriesOut(doc),
   [TABS.TARGETS]: targetsOut(doc),
   [TABS.TYPES]: typesOut(doc),
   [TABS.LOG]: logOut(doc),
   [TABS.PLAN]: planOut(doc),
+  [TABS.NOTES]: notesOut(doc),
   [TABS.SETTINGS]: settingsOut(doc),
 });
 
@@ -385,6 +406,18 @@ export function sheetsToDoc(tabs, base = {}) {
     plans[date] = { ...(plans[date] || {}), [t.id]: !on ? false : (kinds.length ? kinds : true) };
   });
 
+  /* Day notes. Addressed by id, with the name only along for the ride, so
+     renaming a target in the sheet keeps its diary attached to it. */
+  const note = reader(head(TABS.NOTES), NOTE_HEAD);
+  const notes = {};
+  rows(TABS.NOTES).forEach((r) => {
+    const date = norm(note(r, "date"));
+    const t = byId[norm(note(r, "targetId"))];
+    const body = norm(note(r, "note"));
+    if (!isDateKey(date) || !t || !body) return;
+    notes[date] = { ...(notes[date] || {}), [t.id]: body };
+  });
+
   /* Settings read from the sheet win; whatever was in memory is only a
      fallback for a document written before this tab existed. */
   const setting = {};
@@ -395,6 +428,7 @@ export function sheetsToDoc(tabs, base = {}) {
   const baseReminders = base.reminders || {};
   return {
     version: 1,
+    notes,
     createdAt: pick("createdAt", base.createdAt || new Date().toISOString()),
     template: pick("template", base.template || "default"),
     homeTab: pick("opensOn", base.homeTab || "insights") === "today" ? "today" : "insights",

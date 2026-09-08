@@ -94,12 +94,26 @@ export function exportCsv(doc) {
   const byId = {};
   doc.targets.forEach((t) => { byId[t.id] = t; });
 
-  const rows = [["date", "category", "target", "value", "unit", "kinds"]];
-  Object.keys(doc.log || {}).filter(isDateKey).sort().forEach((date) => {
-    Object.entries(doc.log[date]).forEach(([id, raw]) => {
+  const log = doc.log || {};
+  const notes = doc.notes || {};
+
+  /* Every date either half knows about. A note is often written on a day the
+     thing did not happen, so exporting only the days with an entry would drop
+     exactly the notes most worth keeping. */
+  const dates = [...new Set([...Object.keys(log), ...Object.keys(notes)])]
+    .filter(isDateKey).sort();
+
+  const rows = [["date", "category", "target", "value", "unit", "kinds", "note"]];
+  dates.forEach((date) => {
+    const ids = [...new Set([
+      ...Object.keys(log[date] || {}),
+      ...Object.keys(notes[date] || {}),
+    ])];
+    ids.forEach((id) => {
       const t = byId[id];
       if (!t) return;
-      let value = raw;
+      const raw = (log[date] || {})[id];
+      let value = raw == null ? "" : raw;
       let kinds = "";
       if (raw === true) value = 1;
       else if (raw && typeof raw === "object") {
@@ -108,7 +122,7 @@ export function exportCsv(doc) {
           .map((v) => ((t.types || []).find((x) => x.id === v) || {}).name || v)
           .join("; ");
       }
-      rows.push([date, catName(t.catId), t.name, value, t.unit || "", kinds]);
+      rows.push([date, catName(t.catId), t.name, value, t.unit || "", kinds, (notes[date] || {})[id] || ""]);
     });
   });
   return toCsvText(rows);
@@ -120,6 +134,7 @@ const lower = (v) => String(v == null ? "" : v).trim().toLowerCase();
 const DATE_WORDS = ["date", "day", "timestamp", "when"];
 const NAME_WORDS = ["habit", "target", "name", "task", "activity"];
 const VALUE_WORDS = ["value", "count", "amount", "done", "completed", "quantity", "checkmark"];
+const NOTE_WORDS = ["note", "notes", "comment", "comments", "remark"];
 
 const TRUTHY = ["1", "true", "yes", "y", "x", "✓", "done", "completed"];
 const isTruthy = (v) => TRUTHY.includes(lower(v));
@@ -134,8 +149,9 @@ export function detectShape(rows) {
   const dateCol = head.findIndex((h) => DATE_WORDS.includes(h));
   const nameCol = head.findIndex((h) => NAME_WORDS.includes(h));
   const valueCol = head.findIndex((h) => VALUE_WORDS.includes(h));
+  const noteCol = head.findIndex((h) => NOTE_WORDS.includes(h));
 
-  if (dateCol >= 0 && nameCol >= 0) return { shape: "long", dateCol, nameCol, valueCol };
+  if (dateCol >= 0 && nameCol >= 0) return { shape: "long", dateCol, nameCol, valueCol, noteCol };
 
   // Otherwise: first column dates, remaining headers are target names.
   const looksDated = rows.slice(1, 6).filter((r) => toDateKey(r[0])).length;
@@ -169,7 +185,8 @@ export function readImport(text, doc, { defaultCatId } = {}) {
       const name = String(r[found.nameCol] || "").trim();
       if (!date || !name) return;
       const cell = found.valueCol >= 0 ? r[found.valueCol] : "1";
-      raw.push({ date, name, cell });
+      const note = found.noteCol >= 0 ? String(r[found.noteCol] || "").trim() : "";
+      raw.push({ date, name, cell, note });
     });
   } else {
     const names = rows[0].slice(1).map((n) => String(n || "").trim());
@@ -217,10 +234,22 @@ export function readImport(text, doc, { defaultCatId } = {}) {
   });
 
   const log = {};
+  const notes = {};
   let entries = 0;
-  raw.forEach(({ date, name, cell }) => {
+  let noteCount = 0;
+  raw.forEach(({ date, name, cell, note }) => {
     const t = targetFor[lower(name)];
     if (!t) return;
+
+    /* A note stands on its own. A row with something written on it and no
+       value is a day that did not happen and was worth explaining, and
+       discarding it with the empty value would lose the only part that
+       carried any meaning. */
+    if (note) {
+      notes[date] = { ...(notes[date] || {}), [t.id]: note };
+      noteCount++;
+    }
+
     const n = Number(String(cell).replace(/,/g, ""));
     let value = null;
     if (Number.isFinite(n) && n !== 0) value = t.kind === "tick" ? true : round2(n);
@@ -230,14 +259,16 @@ export function readImport(text, doc, { defaultCatId } = {}) {
     entries++;
   });
 
-  const dates = Object.keys(log).sort();
+  const dates = [...new Set([...Object.keys(log), ...Object.keys(notes)])].sort();
   return {
-    ok: entries > 0,
+    ok: entries > 0 || noteCount > 0,
     shape: found.shape,
     entries,
+    notes: noteCount,
     created,
     matched,
     log,
+    noteMap: notes,
     first: dates[0] || null,
     last: dates[dates.length - 1] || null,
   };
@@ -251,5 +282,11 @@ export function applyImport(doc, result) {
   Object.entries(result.log).forEach(([date, day]) => {
     log[date] = { ...day, ...(log[date] || {}) };
   });
-  return { ...doc, targets: [...doc.targets, ...result.created], log };
+
+  const notes = { ...(doc.notes || {}) };
+  Object.entries(result.noteMap || {}).forEach(([date, day]) => {
+    notes[date] = { ...day, ...(notes[date] || {}) };
+  });
+
+  return { ...doc, targets: [...doc.targets, ...result.created], log, notes };
 }

@@ -1,7 +1,7 @@
 /* Today — the day's ring, a week strip, and every target grouped by category. */
 
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { C, S, Bar, Btn, CatHeader, Note, Ring, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
@@ -13,7 +13,9 @@ const fmtBrief = (d) => d.toLocaleDateString(undefined, { weekday: "short", day:
 export default function Today({ doc, update, day, setDay }) {
   const [editing, setEditing] = useState(null);   // { target, dayKey }
   const [planning, setPlanning] = useState(null); // { target, dayKey }
+  const [noting, setNoting] = useState(null);     // { target, dayKey }
   const log = doc.log || {};
+  const notes = doc.notes || {};
   const targets = doc.targets || [];
 
   const diff = M.daysBetween(M.todayKey(), day);
@@ -21,6 +23,8 @@ export default function Today({ doc, update, day, setDay }) {
   const score = M.dayScore(day, targets, log);
 
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
+  const writeNote = (target, dayKey, text) =>
+    update((d) => ({ ...d, notes: M.setDayNote(d.notes || {}, target.id, dayKey, text) }));
 
   const cats = (doc.categories || [])
     .slice()
@@ -112,11 +116,15 @@ export default function Today({ doc, update, day, setDay }) {
                 ) : M.hasTypes(t) ? (
                   <TypedRow
                     t={t} day={day} log={log}
+                    note={M.dayNote(notes, t.id, day)}
+                    onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggleType={(id) => setLog((l) => M.toggleType(l, t, day, id))}
                   />
                 ) : (
                   <TargetRow
                     t={t} day={day} log={log}
+                    note={M.dayNote(notes, t.id, day)}
+                    onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggle={() => setLog((l) => M.toggle(l, t, day))}
                     onStep={(delta) => setLog((l) => M.step(l, t, day, delta))}
                     onEdit={() => setEditing({ target: t, dayKey: day })}
@@ -139,8 +147,17 @@ export default function Today({ doc, update, day, setDay }) {
         target={editing?.target}
         dayKey={editing?.dayKey}
         log={log}
+        note={editing ? M.dayNote(notes, editing.target.id, editing.dayKey) : ""}
+        onChangeNote={(text) => editing && writeNote(editing.target, editing.dayKey, text)}
         onChangeLog={(next) => setLog(() => next)}
         onClose={() => setEditing(null)}
+      />
+
+      <DayNoteSheet
+        state={noting}
+        note={noting ? M.dayNote(notes, noting.target.id, noting.dayKey) : ""}
+        onSave={(text) => writeNote(noting.target, noting.dayKey, text)}
+        onClose={() => setNoting(null)}
       />
     </ScrollView>
   );
@@ -148,7 +165,7 @@ export default function Today({ doc, update, day, setDay }) {
 
 /* ------------------------------------------------------------------ rows -- */
 
-function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
+function TargetRow({ t, day, log, note, onNote, onToggle, onStep, onEdit }) {
   const p = M.progress(t, day, log);
   const today = M.valueOn(log, t.id, day);
   const weekly = t.period === "week";
@@ -194,6 +211,7 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
           <Bar ratio={p.ratio} over={p.over} warn={ceiling && p.ratio > 0.75} />
         )}
         <Note text={t.note} />
+        <DayNote text={note} onPress={onNote} />
       </View>
       {t.kind === "amount" && (
         <Stepper
@@ -203,7 +221,103 @@ function TargetRow({ t, day, log, onToggle, onStep, onEdit }) {
           onPress={onEdit}
         />
       )}
+      <NoteButton on={!!note} onPress={onNote} />
     </View>
+  );
+}
+
+/* What you wrote about this target on this day, shown where you can read it
+   without opening anything. Tapping it reopens the note to change it.
+
+   Set apart from the target's own notes by the accent rule and by being
+   italic: one is a standing instruction, the other is what happened once,
+   and a row that shows both should not read as two halves of one sentence. */
+function DayNote({ text, onPress }) {
+  if (!text) return null;
+  return (
+    <Pressable onPress={onPress} hitSlop={4}>
+      <View style={{ flexDirection: "row", gap: 7, marginTop: 5 }}>
+        <View style={{ width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.accent }} />
+        <Text style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2, fontStyle: "italic" }}>
+          {text}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/* Quiet until it has something in it. A row with nothing written on it should
+   not be shouting about the possibility.
+
+   A pencil rather than a plus: an amount row already has a stepper whose "+"
+   sits directly beside this, and two plus signs in a row is a question about
+   which one adds what. */
+function NoteButton({ on, onPress }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8}
+      style={({ pressed }) => [{
+        width: 30, height: 30, borderRadius: 8, borderWidth: 1,
+        borderColor: on ? C.accent : C.ruleSoft,
+        backgroundColor: on ? C.card : "transparent",
+        alignItems: "center", justifyContent: "center",
+        opacity: pressed ? 0.55 : 1,
+      }]}>
+      <Text style={{ fontSize: 13, color: on ? C.accent : C.ink3 }}>✎</Text>
+    </Pressable>
+  );
+}
+
+/* Writing about one target on one day. Deliberately its own sheet rather than
+   part of logging: most of these are written on days the thing did not happen,
+   which is exactly when there is no number to type. */
+function DayNoteSheet({ state, note, onSave, onClose }) {
+  const [text, setText] = useState("");
+  const [seeded, setSeeded] = useState(null);
+  const key = state ? `${state.target.id}:${state.dayKey}` : null;
+  if (state && seeded !== key) { setSeeded(key); setText(note || ""); }
+  if (!state && seeded !== null) setSeeded(null);
+  if (!state) return null;
+
+  const save = () => { onSave(text); onClose(); };
+
+  return (
+    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
+      <Pressable onPress={onClose}
+        style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)", justifyContent: "flex-end" }}>
+        <Pressable onPress={(e) => e.stopPropagation()}
+          style={{
+            backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+            padding: 18, paddingBottom: 30,
+          }}>
+          <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{state.target.name}</Text>
+          <Text style={[S.muted, { marginBottom: 14 }]}>
+            {M.parseKey(state.dayKey).toLocaleDateString(undefined,
+              { weekday: "long", day: "numeric", month: "long" })}
+          </Text>
+
+          {/* The standing note, if there is one, so you can write against it. */}
+          <Note text={state.target.note} full style={{ marginTop: 0, marginBottom: 14 }} />
+
+          <Text style={S.label}>How did it go?</Text>
+          <TextInput
+            style={[S.input, { minHeight: 110, textAlignVertical: "top" }]}
+            multiline
+            autoFocus
+            value={text}
+            onChangeText={setText}
+            placeholder="Anything worth remembering about today — how it felt, what you changed, why you skipped it."
+          />
+          <Text style={[S.tiny, { marginTop: 5 }]}>
+            Kept against this day only. Clear the box to remove it.
+          </Text>
+
+          <View style={[S.row, { gap: 9, marginTop: 14 }]}>
+            <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
+            <Btn primary label="Save" onPress={save} style={{ flex: 1 }} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -240,7 +354,7 @@ function PlannedRow({ t, day, plans, onPress }) {
 /* A target with types: the weekly total, then one chip per type. Chips the
    plan asked for today are outlined, so the row reads as "here is what you
    said you would do" before it reads as a list of options. */
-function TypedRow({ t, day, log, onToggleType }) {
+function TypedRow({ t, day, log, note, onNote, onToggleType }) {
   const p = M.progress(t, day, log);
   const done = M.typesOn(log, t.id, day);
   const planned = M.plannedOn(t, day);
@@ -259,7 +373,9 @@ function TypedRow({ t, day, log, onToggleType }) {
           </Text>
           <Bar ratio={p.ratio} />
           <Note text={t.note} />
+          <DayNote text={note} onPress={onNote} />
         </View>
+        <NoteButton on={!!note} onPress={onNote} />
       </View>
 
       <View style={[S.row, { flexWrap: "wrap", marginTop: 9, marginLeft: 38 }]}>

@@ -85,10 +85,11 @@ export default function Setup({
                         const day = Object.fromEntries(Object.entries(v).filter(([id]) => !ids.has(id)));
                         if (Object.keys(day).length) log[k] = day;
                       });
+                      const targets = d.targets.filter((t) => t.catId !== g.catId);
                       return {
-                        ...d, log,
+                        ...d, log, targets,
                         categories: d.categories.filter((c) => c.id !== g.catId),
-                        targets: d.targets.filter((t) => t.catId !== g.catId),
+                        notes: M.pruneNotes(d.notes, targets),
                       };
                     })
                   )} />
@@ -146,7 +147,8 @@ export default function Setup({
                           const { [t.id]: _drop, ...rest } = v;
                           if (Object.keys(rest).length) log[k] = rest;
                         });
-                        return { ...d, log, targets: d.targets.filter((x) => x.id !== t.id) };
+                        const targets = d.targets.filter((x) => x.id !== t.id);
+                        return { ...d, log, targets, notes: M.pruneNotes(d.notes, targets) };
                       })
                     )} />
                   </View>
@@ -354,6 +356,7 @@ function Transfer({ doc, update, exportCsvFile, onClose }) {
           <Text style={[S.h2, { fontSize: 14, marginBottom: 6 }]}>What this would add</Text>
           <Text style={S.body}>
             {preview.entries} entr{preview.entries === 1 ? "y" : "ies"}
+            {preview.notes ? ` and ${preview.notes} note${preview.notes === 1 ? "" : "s"}` : ""}
             {preview.first ? `, ${preview.first} to ${preview.last}` : ""}.
           </Text>
           {preview.matched.length > 0 && (
@@ -370,7 +373,11 @@ function Transfer({ doc, update, exportCsvFile, onClose }) {
             Days you have already recorded are left exactly as they are — this fills
             gaps rather than overwriting.
           </Text>
-          <Btn primary label={`Add ${preview.entries} entries`} onPress={() => {
+          <Btn primary
+               label={preview.entries
+                 ? `Add ${preview.entries} entries`
+                 : `Add ${preview.notes} note${preview.notes === 1 ? "" : "s"}`}
+               onPress={() => {
             update((d) => applyImport(d, preview));
             onClose();
           }} />

@@ -6,8 +6,9 @@
    this app still cannot see anything in your Drive it did not make.
 
    Shape lives in model/sheetFormat.js, which is pure and tested. This file is
-   only the transport: find or create the spreadsheet, read four tabs, write
-   four tabs.
+   only the transport: find or create the spreadsheet, read the tabs, write
+   the tabs. `ensureTabs` adds any that a sheet written by an older version
+   does not have yet, so the list here can grow.
    ========================================================================== */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,7 +28,7 @@ const TITLE = CONFIG.sheetName || "AhamMaxxing";
    rather than after the file it replaced. Looked up so an existing sheet is
    renamed rather than abandoned with a second one created beside it. */
 const OLD_TITLE = CONFIG.fileName.replace(/\.json$/i, "");
-const ORDER = [TABS.CATS, TABS.TARGETS, TABS.TYPES, TABS.LOG, TABS.PLAN, TABS.SETTINGS];
+const ORDER = [TABS.CATS, TABS.TARGETS, TABS.TYPES, TABS.LOG, TABS.PLAN, TABS.NOTES, TABS.SETTINGS];
 
 /* Every call goes through here so the stale-token retry lives in one place. */
 async function req(url, opts = {}, retry = true) {

@@ -57,12 +57,12 @@ console.log("\n2. dates in the formats exports actually use");
 console.log("\n3. export is one row per entry");
 {
   const rows = M.parseCsv(M.exportCsv(doc));
-  eq("header", rows[0], ["date", "category", "target", "value", "unit", "kinds"]);
+  eq("header", rows[0], ["date", "category", "target", "value", "unit", "kinds", "note"]);
   eq("three entries", rows.length - 1, 3);
   eq("an amount keeps its unit", rows.find((r) => r[2] === "Walk" && r[0] === "2026-09-01"),
-     ["2026-09-01", "Movement", "Walk", "45", "min", ""]);
+     ["2026-09-01", "Movement", "Walk", "45", "min", "", ""]);
   eq("a tick with kinds names them",
-     rows.find((r) => r[2] === "Strength"), ["2026-09-01", "Movement", "Strength", "1", "", "Arms"]);
+     rows.find((r) => r[2] === "Strength"), ["2026-09-01", "Movement", "Strength", "1", "", "Arms", ""]);
 }
 
 console.log("\n4. importing a column-per-habit file (Loop's shape)");
@@ -116,6 +116,57 @@ console.log("\n8. a full round trip through export and back");
   const walk = r.created.find((t) => t.name === "Walk");
   eq("Walk read back as an amount", walk.kind, "amount");
   eq("its values", [r.log["2026-09-01"][walk.id], r.log["2026-09-02"][walk.id]], [45, 20]);
+}
+
+console.log("\n9. day notes go out and come back");
+{
+  const doc = {
+    categories: [{ id: "c", name: "Movement" }],
+    targets: [
+      { id: "t_walk", catId: "c", name: "Walk", kind: "amount", dir: "at_least",
+        period: "day", goal: 30, unit: "min", step: 5, types: [] },
+      { id: "t_gym", catId: "c", name: "Gym", kind: "tick", dir: "at_least",
+        period: "week", goal: 3, unit: "", step: 1, types: [] },
+    ],
+    log: { "2026-09-01": { t_walk: 45 } },
+    notes: {
+      "2026-09-01": { t_walk: "Windy, went the long way." },
+      // A note on a day nothing was logged: the case worth not losing.
+      "2026-09-02": { t_gym: "Skipped, back was sore." },
+    },
+  };
+
+  const rows = M.parseCsv(M.exportCsv(doc));
+  eq("a note column", rows[0][6], "note");
+  eq("three rows: one entry, one entry+note, one note alone", rows.length - 1, 2);
+  eq("the note rides with its entry", rows[1], ["2026-09-01", "Movement", "Walk", "45", "min", "", "Windy, went the long way."]);
+  eq("and a note with no entry still gets a row",
+     rows[2], ["2026-09-02", "Movement", "Gym", "", "", "", "Skipped, back was sore."]);
+
+  // Straight back in.
+  const empty = { ...doc, log: {}, notes: {} };
+  const read = M.readImport(M.exportCsv(doc), empty);
+  eq("it reads", read.ok, true);
+  eq("one value", read.entries, 1);
+  eq("two notes", read.notes, 2);
+  eq("nothing new invented", read.created.length, 0);
+
+  const back = M.applyImport(empty, read);
+  eq("the value is back", back.log["2026-09-01"].t_walk, 45);
+  eq("the note beside it", back.notes["2026-09-01"].t_walk, "Windy, went the long way.");
+  eq("and the one that stood alone", back.notes["2026-09-02"].t_gym, "Skipped, back was sore.");
+  eq("without inventing an entry for it", (back.log["2026-09-02"] || {}).t_gym, undefined);
+
+  // What is already written wins, the same as entries do.
+  const held = { ...empty, notes: { "2026-09-01": { t_walk: "mine" } } };
+  eq("an existing note is not overwritten",
+     M.applyImport(held, M.readImport(M.exportCsv(doc), held)).notes["2026-09-01"].t_walk, "mine");
+
+  // A file from anywhere else, with no note column, still imports.
+  const plain = "date,habit,value\n2026-09-03,Walk,20\n";
+  const r2 = M.readImport(plain, empty);
+  eq("no note column is not a problem", r2.entries, 1);
+  eq("and no notes are invented", r2.notes, 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

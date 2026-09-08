@@ -472,6 +472,63 @@ export function prunePlan(plan, keepIds) {
   return out;
 }
 
+/* ------------------------------------------------------------ day notes --
+   What happened on one particular day, for one particular target.
+
+   Distinct from a target's own `note`, which is the same text every time —
+   the routine, the rule, the links. This is the opposite: "knee clicked on
+   the third set", "walked it instead", "skipped, travelling". One is a
+   reference, the other a diary.
+
+   Kept beside the log rather than inside it for two reasons. A note is worth
+   writing on a day you did *not* do the thing, which an entry in the log
+   would misrepresent as having done it. And the log's cells already carry
+   comma-separated kind names, so free text in the same cell could not be read
+   back out again. */
+
+export const dayNote = (notes, targetId, dayKey) =>
+  String(((notes || {})[dayKey] || {})[targetId] || "");
+
+export const hasDayNote = (notes, targetId, dayKey) => dayNote(notes, targetId, dayKey) !== "";
+
+/* Writing an empty note removes it, and removes the day with it once nothing
+   is left — otherwise clearing notes for a week leaves a week of empty days
+   behind to be written to the sheet and read back forever. */
+export function setDayNote(notes, targetId, dayKey, text) {
+  const body = String(text == null ? "" : text).trim();
+  const next = { ...(notes || {}) };
+  const day = { ...(next[dayKey] || {}) };
+
+  if (body) day[targetId] = body;
+  else delete day[targetId];
+
+  if (Object.keys(day).length) next[dayKey] = day;
+  else delete next[dayKey];
+  return next;
+}
+
+/* Every day this target has a note on, newest first — one target's diary. */
+export function noteDays(notes, targetId) {
+  return Object.keys(notes || {})
+    .filter((k) => isDateKey(k) && dayNote(notes, targetId, k))
+    .sort()
+    .reverse();
+}
+
+/* Notes belonging to targets that no longer exist, dropped. Deleting a target
+   already takes its history; its notes should not outlive it. */
+export function pruneNotes(notes, targets) {
+  const live = new Set((targets || []).map((t) => t.id));
+  const out = {};
+  Object.entries(notes || {}).forEach(([day, byTarget]) => {
+    const kept = Object.fromEntries(
+      Object.entries(byTarget).filter(([id, text]) => live.has(id) && String(text || "").trim())
+    );
+    if (Object.keys(kept).length) out[day] = kept;
+  });
+  return out;
+}
+
 /* The weekdays a target is planned for, for showing and for editing. */
 export function plannedDays(t) {
   return ALL_DAYS.filter((d) => planEntry(t, d).planned);

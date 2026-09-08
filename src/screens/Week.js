@@ -79,6 +79,10 @@ export default function Week({ doc, update, day }) {
         target={editing?.target}
         dayKey={editing?.dayKey}
         log={log}
+        note={editing ? M.dayNote(doc.notes || {}, editing.target.id, editing.dayKey) : ""}
+        onChangeNote={(text) => editing && update((d) => ({
+          ...d, notes: M.setDayNote(d.notes || {}, editing.target.id, editing.dayKey, text),
+        }))}
         onChangeLog={(next) => setLog(() => next)}
         onClose={() => setEditing(null)}
       />

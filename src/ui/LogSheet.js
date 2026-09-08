@@ -19,14 +19,34 @@ import * as M from "../model/targets";
 const fmtDay = (k) =>
   M.parseKey(k).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 
-export function LogSheet({ target, dayKey, log, onChangeLog, onClose }) {
+/* The day's own note, in the same sheet as the number, because "3 L" and
+   "only because I was on a plane" are one thought and asking for them in two
+   places would get the second one written down half as often. */
+function DayNoteBox({ value, onChange }) {
+  return (
+    <>
+      <Text style={[S.label, { marginTop: 16 }]}>Note for this day (optional)</Text>
+      <TextInput
+        style={[S.input, { minHeight: 66, textAlignVertical: "top" }]}
+        multiline
+        value={value}
+        onChangeText={onChange}
+        placeholder="How it went, what you changed, why not."
+      />
+    </>
+  );
+}
+
+export function LogSheet({ target, dayKey, log, note, onChangeNote, onChangeLog, onClose }) {
   const [text, setText] = useState("");
+  const [dayText, setDayText] = useState("");
 
   // Re-seed whenever a different row or day is opened.
   useEffect(() => {
     if (!target) return;
     const v = M.valueOn(log, target.id, dayKey);
     setText(v ? String(v) : "");
+    setDayText(note || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target && target.id, dayKey]);
 
@@ -41,10 +61,13 @@ export function LogSheet({ target, dayKey, log, onChangeLog, onClose }) {
         .sort((a, b) => a - b)
     : [];
 
+  const saveNote = () => { if (onChangeNote) onChangeNote(dayText); };
+
   const saveAmount = () => {
     const n = Number(text);
     const val = !text || isNaN(n) || n <= 0 ? 0 : M.round2(n);
     onChangeLog(M.setValue(log, target.id, dayKey, target.kind === "tick" ? (val ? true : 0) : val));
+    saveNote();
     onClose();
   };
 
@@ -106,7 +129,8 @@ export function LogSheet({ target, dayKey, log, onChangeLog, onClose }) {
               {planned.length > 0 && (
                 <Text style={[S.tiny, { marginTop: 6 }]}>Dashed outlines are what the plan asked for.</Text>
               )}
-              <Btn primary label="Done" onPress={onClose} />
+              <DayNoteBox value={dayText} onChange={setDayText} />
+              <Btn primary label="Done" onPress={() => { saveNote(); onClose(); }} />
             </>
           ) : (
             <>
@@ -128,6 +152,7 @@ export function LogSheet({ target, dayKey, log, onChangeLog, onClose }) {
                        onPress={() => setText(String(q))} />
                 ))}
               </View>
+              <DayNoteBox value={dayText} onChange={setDayText} />
               <View style={[S.row, { gap: 9, marginTop: 16 }]}>
                 <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
                 <Btn primary label="Save" onPress={saveAmount} style={{ flex: 1 }} />

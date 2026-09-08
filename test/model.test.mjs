@@ -624,5 +624,53 @@ console.log("\n24. clearing the weekly plan");
   eq("counting undefined is zero", M.plannedCount(undefined), 0);
 }
 
+console.log("\n25. a note about one target on one day");
+{
+  const A = K(-2), B = K(-1);
+  let n = {};
+
+  eq("nothing written yet", M.dayNote(n, "walk", A), "");
+  eq("and nothing to report", M.hasDayNote(n, "walk", A), false);
+
+  n = M.setDayNote(n, "walk", A, "  Knee clicked on the third set.  ");
+  eq("written, and trimmed", M.dayNote(n, "walk", A), "Knee clicked on the third set.");
+  eq("it knows it has one", M.hasDayNote(n, "walk", A), true);
+  eq("another day is untouched", M.dayNote(n, "walk", B), "");
+  eq("so is another target", M.dayNote(n, "steps", A), "");
+
+  n = M.setDayNote(n, "steps", A, "Walked it instead.");
+  eq("two targets share a day", Object.keys(n[A]).sort(), ["steps", "walk"]);
+
+  // Clearing removes the note, and the day with it once it is empty.
+  n = M.setDayNote(n, "walk", A, "");
+  eq("cleared", M.dayNote(n, "walk", A), "");
+  eq("the other survives", M.dayNote(n, "steps", A), "Walked it instead.");
+  n = M.setDayNote(n, "steps", A, "   ");
+  eq("whitespace clears it too", M.dayNote(n, "steps", A), "");
+  eq("and the empty day is gone", Object.keys(n), []);
+
+  // A diary for one target, newest first.
+  let d = M.setDayNote({}, "walk", A, "first");
+  d = M.setDayNote(d, "walk", B, "second");
+  d = M.setDayNote(d, "steps", A, "not this one");
+  eq("only that target's days, newest first", M.noteDays(d, "walk"), [B, A]);
+  eq("and only its own", M.noteDays(d, "steps"), [A]);
+  eq("none for a target with nothing", M.noteDays(d, "gym"), []);
+
+  // Notes do not outlive the target they were about.
+  const pruned = M.pruneNotes(d, [{ id: "walk" }]);
+  eq("the surviving target keeps its diary", M.noteDays(pruned, "walk"), [B, A]);
+  eq("the deleted one's notes are gone", M.dayNote(pruned, "steps", A), "");
+  eq("pruning everything leaves nothing", M.pruneNotes(d, []), {});
+  eq("pruning nothing is safe", M.pruneNotes(undefined, [{ id: "walk" }]), {});
+
+  // A note is worth keeping on a day nothing was logged — that is the point.
+  const walk = { ...T.walk, id: "walk" };
+  const notes = M.setDayNote({}, "walk", A, "Skipped, travelling.");
+  eq("a note needs no entry beside it", M.valueOn({}, "walk", A), 0);
+  eq("and is there all the same", M.dayNote(notes, "walk", A), "Skipped, travelling.");
+  eq("the day still scores as it did", M.progress(walk, A, {}).met, false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -37,7 +37,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.432206356046-ltqo2ovf4cf1u229tg184qo3vrdvrf5o"
         }
-      ]
+      ],
+      "./plugins/no-push-entitlement"
     ],
     "scheme": "ahammaxxing",
     "backgroundColor": "#FBF7F0"

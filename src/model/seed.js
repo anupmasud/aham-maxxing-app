@@ -79,7 +79,7 @@ export function suggestionsFor(doc, catId) {
   return (SUGGESTIONS[catId] || []).filter((s) => !taken.has(normaliseName(s.name)));
 }
 
-export const seededDoc = () => docFromTemplate("default");
+export const seededDoc = () => docFromTemplate("health");
 export const emptyDoc = () => ({
   version: 1,
   createdAt: new Date().toISOString(),

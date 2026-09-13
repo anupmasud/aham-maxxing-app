@@ -239,7 +239,20 @@ export const SUGGESTIONS = {
 
 /* ----------------------------------------------------------------- the set -- */
 
+/* Apple Health first, and first is the one a new account starts on. It is the
+   only set here that is somebody else's standard rather than ours, which makes
+   it the safest thing to hand a person who has not yet decided how they think
+   about any of this — and the one that lines up if steps and sleep ever arrive
+   from the phone itself. The rest are opinions, and an opinion is better chosen
+   than defaulted into. */
 export const TEMPLATES = [
+  {
+    id: "health",
+    name: "Apple Health categories",
+    blurb: "Named after the categories in Apple Health — Activity, Nutrition, Sleep, Mindfulness and the rest. The one standard taxonomy in this space, and the one that will line up if steps and sleep ever fill themselves in.",
+    categories: HEALTH_CATEGORIES,
+    starters: ["c_ah_activity", "c_ah_nutrition"],
+  },
   {
     id: "default",
     name: "A bit of everything",
@@ -260,13 +273,6 @@ export const TEMPLATES = [
     blurb: "Benjamin Franklin ruled a grid of these in a notebook and marked a dot for every fault, giving one virtue his full attention each week. It is the same grid as the Week screen, two centuries early.",
     categories: FRANKLIN_CATEGORIES,
     starters: ["c_bf_temperance", "c_bf_order", "c_bf_industry"],
-  },
-  {
-    id: "health",
-    name: "Apple Health categories",
-    blurb: "Named after the categories in Apple Health — Activity, Nutrition, Sleep, Mindfulness and the rest. The one standard taxonomy in this space, and the one that will line up if steps and sleep ever fill themselves in.",
-    categories: HEALTH_CATEGORIES,
-    starters: ["c_ah_activity", "c_ah_nutrition"],
   },
   {
     id: "dinacharya",

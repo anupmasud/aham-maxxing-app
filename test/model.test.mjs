@@ -151,8 +151,9 @@ console.log("\n9. weekly amount tap fills only what is still needed");
 console.log("\n10. seed data is coherent");
 {
   const doc = M.seededDoc();
-  eq("eleven categories", doc.categories.length, 11);
-  eq("six seeded targets", doc.targets.length, 6);
+  eq("the health set's seven categories", doc.categories.length, 7);
+  eq("four seeded targets", doc.targets.length, 4);
+  eq("and it records which set it came from", doc.template, "health");
   eq("every target has a real category",
      doc.targets.every((t) => doc.categories.some((c) => c.id === t.catId)), true);
   eq("every target has an id and days",
@@ -294,8 +295,11 @@ console.log("\n14. a daily tick can only ever be one");
 
 console.log("\n15. starting sets");
 {
-  eq("five to choose from", M.TEMPLATES.map((t) => t.id),
-     ["default", "niyamas", "franklin", "health", "dinacharya"]);
+  /* Apple Health leads, and leading is what makes it the set a new account
+     starts on — templateById falls back to the first entry too. */
+  eq("five to choose from, health first", M.TEMPLATES.map((t) => t.id),
+     ["health", "default", "niyamas", "franklin", "dinacharya"]);
+  eq("an unknown id falls back to that same one", M.templateById("nope").id, "health");
 
   // The Health set exists to line up with Apple's own categories, so its names
   // must stay as Apple writes them.
@@ -334,7 +338,7 @@ console.log("\n16. reorganising keeps everything");
   eq("face mask lands in Saucha", M.guessCategory("niyamas", "Face and Eye Mask"), "c_niy_saucha");
   eq("meditation lands in Surrender", M.guessCategory("niyamas", "Meditate 10 min"), "c_niy_ishvara");
   eq("an unknown name still lands somewhere",
-     M.TEMPLATES[1].categories.some((c) => c.id === M.guessCategory("niyamas", "Zzzz")), true);
+     M.templateById("niyamas").categories.some((c) => c.id === M.guessCategory("niyamas", "Zzzz")), true);
   eq("the longest keyword wins", M.guessCategory("dinacharya", "Lights out by 11"), "c_din_evening");
 }
 

@@ -13,7 +13,7 @@ import {
 import { useCloudDoc } from "./src/store/useCloudDoc";
 import { CONFIG } from "./src/config";
 import { C, S, Btn } from "./src/ui/kit";
-import { TEMPLATES } from "./src/model/seed";
+import { TEMPLATES, templateById } from "./src/model/seed";
 import * as M from "./src/model/targets";
 import * as Reminders from "./src/reminders";
 
@@ -47,7 +47,14 @@ export default function App() {
     grantAccess, resetPermissions, createIn, exportCsvFile, folderUrl, sheetUrl,
   } = useCloudDoc();
   const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
-  const [template, setTemplate] = useState("default");
+  /* Apple Health, because a person who has not thought about this yet is best
+     served by somebody else's standard rather than ours, and because it is the
+     set that lines up if steps and sleep ever arrive from the phone itself.
+     The other four are opinions about how to divide up a life; this one is a
+     taxonomy. Every card says so plainly, so the default reads as a starting
+     point rather than as a decision already taken. */
+  const [template, setTemplate] = useState("health");
+  const [picking, setPicking] = useState(false);
 
   const [tab, setTab] = useState("insights");
 
@@ -143,32 +150,65 @@ export default function App() {
      Google account and the one they signed in with is not always the one they
      expected. */
   if (status === "choose-location") {
+    const chosen = templateById(template);
     return (
-      <Gate title="Choose a starting set" scroll>
+      <Gate title="Your categories" scroll>
+        {/* The question is asked outright rather than left implicit in a list.
+            Five cards with one already highlighted is not a choice anyone
+            notices making — they read the heading, press the button at the
+            bottom, and find out months later that there was an option. */}
         <Text style={S.body}>
-          Categories to begin with. Every one of them can be renamed, removed or
-          added to afterwards — this only decides what is there on day one.
+          You will start with the{" "}
+          <Text style={{ fontWeight: "700", color: C.ink }}>{chosen.name}</Text>
+          {" — "}{chosen.categories.length} categories:
+        </Text>
+        <Text style={[S.body, { marginTop: 8 }]}>
+          {chosen.categories.map((c) => `${c.emoji} ${c.name}`).join("   ")}
+        </Text>
+        <Text style={[S.muted, { marginTop: 10 }]}>{chosen.blurb}</Text>
+
+        <Text style={[S.body, { marginTop: 18, fontWeight: "700", color: C.ink }]}>
+          Would you like a different set instead?
+        </Text>
+        <Text style={[S.muted, { marginTop: 4 }]}>
+          Four other ways of dividing up a life. Any category can be renamed,
+          removed or added to afterwards, and Setup can move everything into a
+          different set later — so this only decides what is there on day one.
         </Text>
 
-        <View style={{ marginTop: 14 }}>
-          {TEMPLATES.map((t) => {
-            const on = template === t.id;
-            return (
-              <Pressable key={t.id} onPress={() => setTemplate(t.id)}
-                style={({ pressed }) => [{
-                  borderWidth: on ? 2 : 1, borderColor: on ? C.ink : C.rule,
-                  backgroundColor: on ? C.sunk : C.card, borderRadius: 12,
-                  padding: 14, marginBottom: 10, opacity: pressed ? 0.75 : 1,
-                }]}>
-                <Text style={{ fontSize: 15.5, fontWeight: "700", color: C.ink }}>{t.name}</Text>
-                <Text style={[S.muted, { marginTop: 4 }]}>{t.blurb}</Text>
-                <Text style={[S.tiny, { marginTop: 6 }]}>
-                  {t.categories.map((c) => c.emoji).join(" ")}  ·  {t.categories.length} categories
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={[S.row, { gap: 8, marginTop: 12 }]}>
+          <Btn label={picking ? "Keep this one" : "Show me the others"}
+               onPress={() => setPicking((v) => !v)} style={{ flex: 1 }} />
         </View>
+
+        {picking && (
+          <View style={{ marginTop: 12 }}>
+            {TEMPLATES.map((t) => {
+              const on = template === t.id;
+              return (
+                <Pressable key={t.id} onPress={() => { setTemplate(t.id); setPicking(false); }}
+                  style={({ pressed }) => [{
+                    borderWidth: on ? 2 : 1, borderColor: on ? C.ink : C.rule,
+                    backgroundColor: on ? C.sunk : C.card, borderRadius: 12,
+                    padding: 14, marginBottom: 10, opacity: pressed ? 0.75 : 1,
+                  }]}>
+                  <View style={[S.row, { gap: 8 }]}>
+                    <Text style={{ flex: 1, fontSize: 15.5, fontWeight: "700", color: C.ink }}>
+                      {t.name}
+                    </Text>
+                    {on && (
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: C.good }}>CURRENT</Text>
+                    )}
+                  </View>
+                  <Text style={[S.muted, { marginTop: 4 }]}>{t.blurb}</Text>
+                  <Text style={[S.tiny, { marginTop: 6 }]}>
+                    {t.categories.map((c) => c.emoji).join(" ")}  ·  {t.categories.length} categories
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         <Text style={[S.body, { marginTop: 6 }]}>
           Everything you log is kept in a spreadsheet in{" "}

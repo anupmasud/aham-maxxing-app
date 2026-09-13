@@ -99,11 +99,13 @@ export default function App() {
 
   if (status === "signed-out" || status === "starting") {
     return (
-      <Gate title="AhamMaxxing" tagline="Set the targets. Own the week.">
+      <Gate title="AhamMaxxing" tagline="Your definition of success. Your Google Drive.">
         <Text style={S.body}>
-          Sign in with Google. Everything is kept in a spreadsheet in{" "}
-          {CONFIG.folderPath.join(" / ")} on your own Drive — this app can only
-          see files it created there, nothing else.
+          Success means something different to everyone, so you set the
+          categories, the targets and the limits. Everything you log is kept in a
+          spreadsheet in {CONFIG.folderPath.join(" / ")} on your own Google Drive:
+          no account to make, no server, and nobody else's copy — this app can
+          only ever see the file it created there.
         </Text>
         {/* Google leaves the Drive checkbox unticked and gives an app no way to
             pre-select it, so the only thing that helps is saying so first. */}

@@ -28,7 +28,7 @@
       "themeColor": "#FBF7F0",
       "backgroundColor": "#FBF7F0",
       "display": "standalone",
-      "description": "Set targets by category, check them off daily, see how the week went."
+      "description": "Your definition of success. Your Google Drive."
     },
     "plugins": [
       "expo-dev-client",

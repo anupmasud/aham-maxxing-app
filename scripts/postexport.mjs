@@ -40,7 +40,7 @@ if (fs.existsSync(staticDir)) {
 const manifest = {
   name: "AhamMaxxing",
   short_name: "AhamMaxxing",
-  description: "Your data, in a folder of your own Google Drive.",
+  description: "Your definition of success. Your Google Drive.",
   start_url: `${BASE}/`,
   scope: `${BASE}/`,
   display: "standalone",

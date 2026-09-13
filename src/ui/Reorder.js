@@ -68,17 +68,25 @@ export function shiftFor(index, from, to, draggedHeight) {
   return 0;
 }
 
+/* Bordered like the buttons beside it, on purpose.
+
+   The first version was bare dots with no outline, sitting next to three
+   controls that all had one. It reported back as "I don't see anything" —
+   which was fair: on a row where everything actionable is in a box, the one
+   thing that is not reads as decoration. The box is what says this is for
+   pressing. */
 export function Grip({ pan, active }) {
   return (
     <View
       {...pan}
-      // A generous target: the glyph is small and the thing it does is fiddly.
       style={{
-        width: 34, alignSelf: "stretch", minHeight: 34,
+        width: 30, height: 30, borderRadius: 7, borderWidth: 1,
+        borderColor: active ? C.ink : C.rule,
+        backgroundColor: active ? C.sunk : C.card,
         alignItems: "center", justifyContent: "center",
       }}
     >
-      <Text style={{ fontSize: 17, lineHeight: 20, color: active ? C.ink : C.ink3 }}>⠿</Text>
+      <Text style={{ fontSize: 15, lineHeight: 18, color: active ? C.ink : C.ink2 }}>⠿</Text>
     </View>
   );
 }
@@ -180,8 +188,8 @@ export function Reorderable({ items, onReorder, children, keyOf }) {
 export function DragHint({ what }) {
   return (
     <Pressable>
-      <Text style={{ fontSize: 11, color: C.ink3, marginBottom: 8 }}>
-        Drag ⠿ to change the order of {what}.
+      <Text style={{ fontSize: 11.5, color: C.ink2, marginBottom: 8 }}>
+        Press and drag the ⠿ handle on any row to change the order of {what}.
       </Text>
     </Pressable>
   );

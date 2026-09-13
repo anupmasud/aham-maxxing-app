@@ -289,12 +289,48 @@ export function useCloudDoc() {
     setStatus("signed-out");
   }, [user]);
 
+  /* Start again: bin the spreadsheet and go back to the first screen.
+
+     The ordinary ways out are all the wrong shape for this. Signing out keeps
+     the file, so signing back in finds it. Disconnecting keeps it too, and
+     reconnecting reloads the same twenty-eight targets. Clearing history keeps
+     the targets. None of them let you change your mind about the whole system,
+     which is a thing people do most in the first fortnight.
+
+     Landing on "choose-location" rather than "signed-out" is the point: with
+     no spreadsheet to find, the next load asks which set of categories to
+     begin with, which is the screen worth getting back to. */
+  const startOver = useCallback(async () => {
+    clearTimeout(timer.current);
+    setStatus("loading");
+    try {
+      if (fileId.current) await Sheets.trashSheet(fileId.current);
+    } catch (e) {
+      setError(e.message || "Could not remove the spreadsheet.");
+      setStatus("error");
+      return;
+    }
+    if (user) {
+      try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {}
+      await Sheets.forgetSheet(user.email);
+    }
+    setDoc(null);
+    latest.current = null;
+    fileId.current = null;
+    folderId.current = null;
+    baseTime.current = null;
+    setConflict(null);
+    setError("");
+    setStatus("choose-location");
+  }, [user]);
+
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return {
     user, doc, status, error, conflict,
     update, syncNow, resolveConflict,
     signIn, signOut, disconnect, grantAccess, resetPermissions, createIn, exportCsvFile,
+    startOver,
     sheetUrl: fileId.current ? Sheets.sheetUrl(fileId.current) : null,
     folderUrl: folderId.current ? Drive.folderUrl(folderId.current) : null,
     configured: !!(CONFIG.iosClientId || CONFIG.webClientId),

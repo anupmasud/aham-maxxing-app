@@ -230,5 +230,20 @@ export async function saveDoc(id, doc, baseModifiedTime, { force = false } = {})
   return { modifiedTime: after.modifiedTime };
 }
 
+/* Moves the spreadsheet to the Drive bin.
+
+   Trashed rather than deleted outright, deliberately. Starting again means
+   throwing away every target and every day logged against them, and Drive
+   keeps a binned file for thirty days — so the one irreversible action in the
+   app is quietly reversible for a month, from the person's own Drive, without
+   the app having to hold a copy of anything. */
+export async function trashSheet(id) {
+  if (!id) return;
+  await req(`${FILES}/${id}?fields=id`, {
+    method: "PATCH",
+    body: JSON.stringify({ trashed: true }),
+  });
+}
+
 export const sheetUrl = (id) => `https://docs.google.com/spreadsheets/d/${id}/edit`;
 export { folderUrl };

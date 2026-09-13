@@ -14,7 +14,7 @@ import { applyImport, readImport } from "../model/csv";
 import { CONFIG } from "../config";
 
 export default function Setup({
-  doc, update, user, folderUrl, sheetUrl, signOut, disconnect, exportCsvFile,
+  doc, update, user, folderUrl, sheetUrl, signOut, disconnect, exportCsvFile, startOver,
 }) {
   const [editTarget, setEditTarget] = useState(null);   // { target } | { catId }
   const [editCat, setEditCat] = useState(null);         // { cat } | {}
@@ -231,6 +231,29 @@ export default function Setup({
       </View>
 
       <Reminders doc={doc} update={update} />
+
+      <View style={[S.card, S.cardPad]}>
+        <Text style={[S.h2, { marginBottom: 6 }]}>Start again</Text>
+        <Text style={S.muted}>
+          A different set of categories and a clean slate. The spreadsheet goes
+          to your Drive bin — where Google keeps it for thirty days if you change
+          your mind — and the app returns to the first screen so you can pick a
+          starting set again.
+        </Text>
+        <Text style={[S.tiny, { marginTop: 8 }]}>
+          Signing out or disconnecting will not do this: both leave the
+          spreadsheet where it is, so signing back in finds the same targets.
+        </Text>
+        <Btn danger label="Start again from scratch" onPress={() => confirm(
+          "Start again from scratch?",
+          `Every category, target and logged day goes — ${(doc.targets || []).length} target${(doc.targets || []).length === 1 ? "" : "s"} and ` +
+          `${Object.keys(doc.log || {}).length} day${Object.keys(doc.log || {}).length === 1 ? "" : "s"} of history. ` +
+          "The spreadsheet moves to your Drive bin and Google keeps it for thirty days, so this is undoable from there — " +
+          "but not from inside the app. Export a CSV first if you want a copy you can read.",
+          () => startOver && startOver(),
+          "Start again"
+        )} />
+      </View>
 
       <View style={[S.card, S.cardPad]}>
         <Text style={[S.h2, { marginBottom: 8 }]}>Your data</Text>

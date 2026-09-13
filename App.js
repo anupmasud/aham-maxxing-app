@@ -44,7 +44,7 @@ export default function App() {
   const {
     user, doc, status, error, conflict, configured,
     update, syncNow, resolveConflict, signIn, signOut, disconnect,
-    grantAccess, resetPermissions, createIn, exportCsvFile, folderUrl, sheetUrl,
+    grantAccess, resetPermissions, createIn, exportCsvFile, startOver, folderUrl, sheetUrl,
   } = useCloudDoc();
   const [folder, setFolder] = useState(CONFIG.folderPath.join(" / "));
   /* Apple Health, because a person who has not thought about this yet is best
@@ -293,7 +293,7 @@ export default function App() {
 
   const props = {
     doc, update, day, setDay, tab, setTab, user, status, error,
-    syncNow, signOut, disconnect, folderUrl, sheetUrl, exportCsvFile,
+    syncNow, signOut, disconnect, folderUrl, sheetUrl, exportCsvFile, startOver,
   };
 
   return (

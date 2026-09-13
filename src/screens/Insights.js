@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
 
-import { C, S, Ring } from "../ui/kit";
+import { Arrow, Btn, C, S, Ring } from "../ui/kit";
 import * as M from "../model/targets";
 
 const RANGES = [
@@ -151,10 +151,25 @@ export default function Insights({ doc, setDay, setTab }) {
 
 function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
   const today = M.todayKey();
-  const monday = M.startOfWeek(new Date());
-  const keys = M.weekKeys(monday);
-  const elapsed = M.dow(new Date()) + 1;        // days of this week gone, today included
-  const left = 7 - elapsed;
+  const thisMonday = M.keyOf(M.startOfWeek(new Date()));
+  const [monday, setMonday] = useState(thisMonday);
+  const keys = M.weekKeys(M.parseKey(monday));
+
+  /* Which week relative to this one: 0 now, -1 last week, 1 next. */
+  const offset = Math.round(M.daysBetween(thisMonday, monday) / 7);
+
+  /* How much of the week has been lived. A finished week is all seven days —
+     judging it against "so far" would freeze it at whatever Sunday looked
+     like, and a week still ahead has nothing to judge at all. */
+  const elapsed = offset < 0 ? 7 : offset > 0 ? 0 : M.dow(new Date()) + 1;
+  const left = offset === 0 ? 7 - elapsed : 0;
+  const finished = offset < 0;
+
+  const heading = offset === 0 ? "This week"
+    : offset === -1 ? "Last week"
+    : offset === 1 ? "Next week"
+    : offset < 0 ? `${-offset} weeks ago`
+    : `In ${offset} weeks`;
 
   const openDay = (k) => { setDay(k); setTab("today"); };
 
@@ -172,7 +187,11 @@ function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
 
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]}>
-      <Text style={[S.h1, { marginBottom: 10 }]}>This week</Text>
+      <View style={[S.row, { marginBottom: 10 }]}>
+        <Arrow glyph="‹" onPress={() => setMonday(M.keyOf(M.addDays(M.parseKey(monday), -7)))} />
+        <Text style={[S.h1, { flex: 1, textAlign: "center" }]} numberOfLines={1}>{heading}</Text>
+        <Arrow glyph="›" onPress={() => setMonday(M.keyOf(M.addDays(M.parseKey(monday), 7)))} />
+      </View>
       <RangePicker active={0} setDays={setDays} />
 
       <View style={[S.card, S.cardPad, S.row, { gap: 15 }]}>
@@ -191,7 +210,11 @@ function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
             {M.parseKey(keys[6]).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
           </Text>
           <Text style={[S.muted, { marginTop: 3 }]}>
-            Day {elapsed} of 7{left > 0 ? ` · ${left} day${left > 1 ? "s" : ""} to go` : " · last day"}
+            {offset > 0
+              ? "Still to come"
+              : finished
+                ? "Finished"
+                : `Day ${elapsed} of 7${left > 0 ? ` · ${left} day${left > 1 ? "s" : ""} to go` : " · last day"}`}
           </Text>
           <View style={[S.row, { gap: 4, marginTop: 8 }]}>
             {keys.map((k, i) => {
@@ -219,7 +242,7 @@ function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
           <Text style={[S.h2, { marginBottom: 4 }]}>{cat.emoji} {cat.name}</Text>
           {rows.map((t) => (
             <WeekRow key={t.id} t={t} log={log} breaks={breaks}
-                     keys={keys} elapsed={elapsed} left={left} />
+                     keys={keys} elapsed={elapsed} left={left} finished={finished} />
           ))}
         </View>
       ))}
@@ -227,19 +250,28 @@ function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
       <Text style={[S.tiny, { textAlign: "center", marginTop: 4 }]}>
         Tap any day above to log or correct it.
       </Text>
+      {offset !== 0 && (
+        <Btn label="Back to this week" onPress={() => setMonday(thisMonday)} />
+      )}
     </ScrollView>
   );
 }
 
-/* One target's standing this week, phrased as what is still to do. */
-function WeekRow({ t, log, breaks, keys, elapsed, left }) {
+/* One target's standing in the week being looked at, phrased as what is still
+   to do — or, once the week is over, as what happened.
+
+   `when` is a day inside that week rather than today. A weekly total is
+   derived from whichever week the date falls in, so passing today here read
+   this week's figures onto last week's dashboard: every row on a page headed
+   "Last week" quietly describing the wrong seven days. */
+function WeekRow({ t, log, breaks, keys, elapsed, left, finished }) {
   const ceiling = t.dir === "at_most";
-  const today = M.todayKey();
+  const when = keys[0];
 
   let line, ratio, tone = C.good;
 
   if (t.period === "week") {
-    const p = M.progress(t, today, log);
+    const p = M.progress(t, when, log);
     ratio = p.ratio;
     if (ceiling) {
       const remaining = M.round2(p.goal - p.total);
@@ -249,10 +281,13 @@ function WeekRow({ t, log, breaks, keys, elapsed, left }) {
         : `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)}${t.unit ? " " + t.unit : ""} used · ${M.fmtNum(remaining)} left`;
     } else {
       const togo = Math.max(0, M.round2(p.goal - p.total));
-      line = p.met
-        ? `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} — done`
-        : `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)} · ${M.fmtNum(togo)} to go, ${left} day${left === 1 ? "" : "s"} left`;
-      tone = p.met ? C.good : togo > left && left >= 0 ? C.warn : C.good;
+      const pair = `${M.fmtNum(p.total)} of ${M.fmtNum(p.goal)}`;
+      /* A week that is over has no days left to promise, so it says what
+         happened rather than what there is still time for. */
+      line = p.met ? `${pair} — done`
+        : finished ? `${pair} — ${M.fmtNum(togo)} short`
+        : `${pair} · ${M.fmtNum(togo)} to go, ${left} day${left === 1 ? "" : "s"} left`;
+      tone = p.met ? C.good : finished ? C.ink2 : togo > left && left >= 0 ? C.warn : C.good;
     }
   } else {
     /* Days away are not days you could have done it. "2 of 7" on a week you
@@ -265,17 +300,19 @@ function WeekRow({ t, log, breaks, keys, elapsed, left }) {
     if (ceiling) {
       const broken = sched.filter((k) => M.progress(t, k, log).over).length;
       tone = broken ? C.over : C.good;
-      line = broken ? `over on ${broken} of ${sched.length} days so far` : `within limit all ${sched.length} days`;
+      line = broken
+        ? `over on ${broken} of ${sched.length} day${sched.length === 1 ? "" : "s"}${finished ? "" : " so far"}`
+        : `within limit all ${sched.length} day${sched.length === 1 ? "" : "s"}`;
       ratio = sched.length ? (sched.length - broken) / sched.length : 0;
     } else {
-      line = `${hit} of ${sched.length} day${sched.length === 1 ? "" : "s"} so far`;
+      line = `${hit} of ${sched.length} day${sched.length === 1 ? "" : "s"}${finished ? "" : " so far"}`;
       tone = hit === sched.length ? C.good : C.ink2;
     }
   }
 
   const types = M.hasTypes(t)
     ? t.types.map((ty) => {
-        const tp = M.typeProgress(t, ty, today, log);
+        const tp = M.typeProgress(t, ty, when, log);
         return `${ty.name} ${tp.total}${ty.goal ? "/" + ty.goal : ""}`;
       }).join("  ·  ")
     : null;

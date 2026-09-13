@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { C, S, Bar, Btn, CatHeader, Note, Ring, Seg, Stepper, Tick } from "../ui/kit";
+import { Arrow, C, S, Bar, Btn, CatHeader, Note, Ring, Seg, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
 import { GROUP_MODES, groupTargets } from "../model/grouping";
 import * as M from "../model/targets";
@@ -574,12 +574,3 @@ function PlanSheet({ state, doc, update, onClose }) {
   );
 }
 
-function Arrow({ glyph, onPress, disabled }) {
-  return (
-    <Pressable onPress={onPress} disabled={disabled} hitSlop={10}
-      style={({ pressed }) => [{ width: 40, height: 40, alignItems: "center", justifyContent: "center",
-                                 opacity: disabled ? 0.25 : pressed ? 0.5 : 1 }]}>
-      <Text style={{ fontSize: 28, color: C.ink2, lineHeight: 32 }}>{glyph}</Text>
-    </Pressable>
-  );
-}

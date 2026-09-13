@@ -403,6 +403,20 @@ export const Seg = ({ on, label, sub, onPress }) => (
   </Pressable>
 );
 
+/* Step back and forward through days or weeks. Shared because three screens
+   now navigate time and the three copies had already drifted apart. */
+export function Arrow({ glyph, onPress, disabled }) {
+  return (
+    <Pressable onPress={onPress} disabled={disabled} hitSlop={10}
+      style={({ pressed }) => [{
+        width: 40, height: 40, alignItems: "center", justifyContent: "center",
+        opacity: disabled ? 0.25 : pressed ? 0.5 : 1,
+      }]}>
+      <Text style={{ fontSize: 28, color: C.ink2, lineHeight: 32 }}>{glyph}</Text>
+    </Pressable>
+  );
+}
+
 export function CatHeader({ cat, right }) {
   return (
     <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, backgroundColor: C.sunk, gap: 9 }]}>

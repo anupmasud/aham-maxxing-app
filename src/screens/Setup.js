@@ -259,8 +259,15 @@ export default function Setup({
         <Text style={[S.h2, { marginBottom: 8 }]}>Your data</Text>
         <Text style={S.muted}>
           Signed in as {user?.email}. Everything lives in a spreadsheet in{" "}
-          {CONFIG.folderPath.join(" / ")} on your Drive — four tabs you can read,
-          sort, chart or edit by hand. Change a goal there and the app picks it up.
+          {CONFIG.folderPath.join(" / ")} on your Drive — eight tabs you can read,
+          sort, chart or edit by hand. Rename a target, change a goal or type a
+          holiday into the Away tab, and the app picks it up next time it loads.
+        </Text>
+        <Text style={[S.tiny, { marginTop: 8 }]}>
+          One thing to know: the app reads what a cell currently shows, so a
+          formula is read as its answer and written back as that answer the next
+          time anything is saved. Build formulas in a copy of the sheet, or in a
+          tab of your own that the app does not write to.
         </Text>
         {!!sheetUrl && (
           <Pressable onPress={() => Linking.openURL(sheetUrl)} style={{ marginTop: 10 }}>

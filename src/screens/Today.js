@@ -6,6 +6,7 @@ import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-nativ
 import { Arrow, C, S, Bar, Btn, CatHeader, Note, Ring, Seg, Stepper, Tick } from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
 import { GROUP_MODES, groupTargets } from "../model/grouping";
+import { Reorderable } from "../ui/Reorder";
 import * as M from "../model/targets";
 
 /* The model names a tone; the palette stays here. */
@@ -23,6 +24,12 @@ export default function Today({ doc, update, day, setDay }) {
      than shared: organising is a job you do by area, and getting through the
      day can reasonably be a different one. */
   const [grouping, setGrouping] = useState("category");
+
+  /* Off by default. Today is the screen you open to tick one thing off, and a
+     handle on every row every morning is clutter on the one screen that has
+     earned the right to be quiet. Turned on, it stays on until you turn it
+     off, which is how a tidying-up mood actually goes. */
+  const [arranging, setArranging] = useState(false);
   const log = doc.log || {};
   const notes = doc.notes || {};
   const breaks = doc.breaks || [];
@@ -36,6 +43,28 @@ export default function Today({ doc, update, day, setDay }) {
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
   const writeNote = (target, dayKey, text) =>
     update((d) => ({ ...d, notes: M.setDayNote(d.notes || {}, target.id, dayKey, text) }));
+
+  /* Only some targets apply today, and only some categories have anything in
+     them — so both of these reorder what is on screen among the places those
+     items already held, and leave everything else alone. */
+  const moveCategory = (from, to) =>
+    update((d) => ({
+      ...d,
+      categories: M.reorderWithin(
+        (d.categories || []).slice().sort((a, b) => a.order - b.order),
+        groups.map((g) => catById[g.catId]).filter(Boolean),
+        from, to),
+    }));
+
+  const moveTarget = (catId, visible, from, to) =>
+    update((d) => {
+      const mine = (d.targets || []).filter((t) => t.catId === catId)
+        .sort((a, b) => a.order - b.order);
+      const moved = M.reorderWithin(mine, visible, from, to);
+      const byId = {};
+      moved.forEach((t) => { byId[t.id] = t; });
+      return { ...d, targets: (d.targets || []).map((t) => byId[t.id] || t) };
+    });
 
   /* Only what this day actually asks for, then arranged. Grouping the whole
      library and filtering afterwards would leave headings with nothing under
@@ -132,7 +161,7 @@ export default function Today({ doc, update, day, setDay }) {
       {/* Worth offering only once there is enough here for the arrangement to
           make a difference. */}
       {dueToday.length > 3 && (
-        <View style={[S.row, { gap: 6, marginBottom: 12 }]}>
+        <View style={[S.row, { gap: 6, marginBottom: arranging ? 8 : 12 }]}>
           {GROUP_MODES.map((m) => (
             <Seg key={m.id} on={grouping === m.id} label={m.label} sub={m.sub}
                  onPress={() => setGrouping(m.id)} />
@@ -140,7 +169,29 @@ export default function Today({ doc, update, day, setDay }) {
         </View>
       )}
 
-      {groups.map((g) => {
+      {/* Rearranging is a thing you do occasionally and ticking off is a thing
+          you do daily, so the handles are asked for rather than always there. */}
+      {grouping === "category" && dueToday.length > 1 && (
+        <Pressable onPress={() => setArranging((v) => !v)} hitSlop={6}
+                   style={{ marginBottom: 12, alignSelf: "flex-start" }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: C.accent }}>
+            {arranging ? "Done rearranging" : "⠿  Rearrange"}
+          </Text>
+        </Pressable>
+      )}
+      {arranging && (
+        <Text style={[S.tiny, { marginTop: -6, marginBottom: 10 }]}>
+          Press and drag a ⠿ handle. Only what is showing today moves — anything
+          not scheduled today keeps its place.
+        </Text>
+      )}
+
+      <Reorderable
+        items={groups}
+        onReorder={arranging && grouping === "category" ? moveCategory : () => {}}
+        keyOf={(g) => g.id}
+      >
+      {(g, _gi, catGrip) => {
         const rows = g.targets;
         const cat = g.catId ? catById[g.catId] : null;
         const done = rows.filter((t) => M.progress(t, day, log).met).length;
@@ -148,7 +199,12 @@ export default function Today({ doc, update, day, setDay }) {
           <View key={g.id} style={S.card}>
             <CatHeader
               cat={{ name: g.name, emoji: g.emoji, color: g.color || TONE[g.tone] }}
-              right={<Text style={S.tiny}>{done}/{rows.length}</Text>}
+              right={
+                <View style={[S.row, { gap: 8 }]}>
+                  <Text style={S.tiny}>{done}/{rows.length}</Text>
+                  {arranging && g.catId && groups.length > 1 && catGrip}
+                </View>
+              }
             />
             {/* Whatever belongs to the whole area — the warm-up everything here
                 starts with, the videos you follow — read before the first row
@@ -156,17 +212,26 @@ export default function Today({ doc, update, day, setDay }) {
             {!!cat && (
               <Note text={cat.note} full style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
             )}
-            {rows.map((t, i) => (
-              <View key={t.id}>
+            <Reorderable
+              items={rows}
+              onReorder={arranging && g.catId
+                ? (a, b) => moveTarget(g.catId, rows, a, b)
+                : () => {}}
+              keyOf={(t) => t.id}
+            >
+            {(t, i, grip) => (
+              <View>
                 {i > 0 && <View style={S.rule} />}
                 {M.isFuture(day) ? (
                   <PlannedRow t={t} day={day} plans={doc.plans}
                               badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
+                              grip={arranging && g.catId && rows.length > 1 ? grip : null}
                               onPress={() => setPlanning({ target: t, dayKey: day })} />
                 ) : M.hasTypes(t) ? (
                   <TypedRow
                     t={t} day={day} log={log}
                     badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
+                    grip={arranging && g.catId && rows.length > 1 ? grip : null}
                     note={M.dayNote(notes, t.id, day)}
                     onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggleType={(id) => setLog((l) => M.toggleType(l, t, day, id))}
@@ -175,6 +240,7 @@ export default function Today({ doc, update, day, setDay }) {
                   <TargetRow
                     t={t} day={day} log={log}
                     badge={!g.catId ? (catById[t.catId] || {}).emoji : ""}
+                    grip={arranging && g.catId && rows.length > 1 ? grip : null}
                     note={M.dayNote(notes, t.id, day)}
                     onNote={() => setNoting({ target: t, dayKey: day })}
                     onToggle={() => setLog((l) => M.toggle(l, t, day))}
@@ -183,10 +249,12 @@ export default function Today({ doc, update, day, setDay }) {
                   />
                 )}
               </View>
-            ))}
+            )}
+            </Reorderable>
           </View>
         );
-      })}
+      }}
+      </Reorderable>
 
       <PlanSheet
         state={planning}
@@ -217,7 +285,7 @@ export default function Today({ doc, update, day, setDay }) {
 
 /* ------------------------------------------------------------------ rows -- */
 
-function TargetRow({ t, day, log, note, badge, onNote, onToggle, onStep, onEdit }) {
+function TargetRow({ t, day, log, note, badge, grip, onNote, onToggle, onStep, onEdit }) {
   const p = M.progress(t, day, log);
   const today = M.valueOn(log, t.id, day);
   const weekly = t.period === "week";
@@ -278,6 +346,7 @@ function TargetRow({ t, day, log, note, badge, onNote, onToggle, onStep, onEdit 
         />
       )}
       <NoteButton on={!!note} onPress={onNote} />
+      {grip}
     </View>
   );
 }
@@ -380,7 +449,7 @@ function DayNoteSheet({ state, note, onSave, onClose }) {
 /* A day that has not happened yet. It shows what the plan asked for and
    nothing else — no circle to tap, because recording a session before it has
    happened would put work into the week's totals that nobody has done. */
-function PlannedRow({ t, day, plans, badge, onPress }) {
+function PlannedRow({ t, day, plans, badge, grip, onPress }) {
   const p = M.planFor(t, day, plans);
 
   return (
@@ -402,6 +471,7 @@ function PlannedRow({ t, day, plans, badge, onPress }) {
           {p.source === "override" ? " · this week only" : p.source === "recurring" ? " · every week" : ""}
         </Text>
       </View>
+      {grip}
       <Text style={{ fontSize: 20, color: C.ink3 }}>›</Text>
     </Pressable>
   );
@@ -410,7 +480,7 @@ function PlannedRow({ t, day, plans, badge, onPress }) {
 /* A target with types: the weekly total, then one chip per type. Chips the
    plan asked for today are outlined, so the row reads as "here is what you
    said you would do" before it reads as a list of options. */
-function TypedRow({ t, day, log, note, badge, onNote, onToggleType }) {
+function TypedRow({ t, day, log, note, badge, grip, onNote, onToggleType }) {
   const p = M.progress(t, day, log);
   const done = M.typesOn(log, t.id, day);
   const planned = M.plannedOn(t, day);
@@ -434,6 +504,7 @@ function TypedRow({ t, day, log, note, badge, onNote, onToggleType }) {
           <DayNote text={note} onPress={onNote} />
         </View>
         <NoteButton on={!!note} onPress={onNote} />
+        {grip}
       </View>
 
       <View style={[S.row, { flexWrap: "wrap", marginTop: 9, marginLeft: 38 }]}>

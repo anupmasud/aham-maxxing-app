@@ -14,6 +14,11 @@ import { useCloudDoc } from "./src/store/useCloudDoc";
 import { CONFIG } from "./src/config";
 import { C, S, Btn } from "./src/ui/kit";
 import { TEMPLATES, templateById } from "./src/model/seed";
+
+/* Written once. It is on the sign-in screen, on the first-run screen and
+   under the name in the bar at the top of every screen, and three copies of a
+   line like this drift the moment one of them is edited. */
+const TAGLINE = "Your definition of success. Your Google Drive.";
 import * as M from "./src/model/targets";
 import * as Reminders from "./src/reminders";
 
@@ -99,7 +104,7 @@ export default function App() {
 
   if (status === "signed-out" || status === "starting") {
     return (
-      <Gate title="AhamMaxxing" tagline="Your definition of success. Your Google Drive.">
+      <Gate title="AhamMaxxing" tagline={TAGLINE}>
         <Text style={S.body}>
           Success means something different to everyone, so you set the
           categories, the targets and the limits. Everything you log is kept in a
@@ -303,7 +308,10 @@ export default function App() {
       <StatusBar barStyle="dark-content" />
 
       <View style={[S.row, a.top]}>
-        <Text style={a.brand}>AhamMaxxing</Text>
+        <View>
+          <Text style={a.brand}>AhamMaxxing</Text>
+          <Text style={a.tagline} numberOfLines={1}>{TAGLINE}</Text>
+        </View>
         <View style={{ flex: 1 }} />
         {!!outstanding && (
           <View style={[a.pill, { backgroundColor: outstanding.tone + "1A" }]}>
@@ -379,6 +387,9 @@ const a = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: C.ruleSoft, backgroundColor: C.paper,
   },
   brand: { fontSize: 17, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
+  /* Small enough to be a subtitle rather than a second headline — it sits on
+     every screen, so it has to be readable once and ignorable thereafter. */
+  tagline: { fontSize: 10, color: C.ink3, marginTop: 1, letterSpacing: 0.1 },
   pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   tabbar: {
     flexDirection: "row", borderTopWidth: 1, borderTopColor: C.rule,

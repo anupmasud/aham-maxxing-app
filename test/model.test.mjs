@@ -850,5 +850,39 @@ console.log("\n28. dragging something into a new position");
   eq("the list handed in is unchanged", JSON.stringify(list), before);
 }
 
+console.log("\n29. reordering a list you can only see part of");
+{
+  // Six targets; today only a, c and e apply.
+  const all = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, order: i }));
+  const ids = (l) => l.map((x) => x.id);
+  const seen = [all[0], all[2], all[4]];      // a, c, e
+
+  // Drag the first visible one (a) to the end of what is visible: a c e -> c e a
+  const moved = M.reorderWithin(all, seen, 0, 2);
+  eq("the visible ones swap among their own places", ids(moved), ["c", "b", "e", "d", "a", "f"]);
+  eq("and the hidden ones are where they were",
+     [moved[1].id, moved[3].id, moved[5].id], ["b", "d", "f"]);
+  eq("renumbered cleanly", moved.map((x) => x.order), [0, 1, 2, 3, 4, 5]);
+
+  // What it would look like read back on a day when everything applies.
+  eq("the visible order is what was asked for",
+     ids(moved).filter((id) => ["a", "c", "e"].includes(id)), ["c", "e", "a"]);
+
+  // Dragging the last visible one to the front.
+  eq("upwards too", ids(M.reorderWithin(all, seen, 2, 0)), ["e", "b", "a", "d", "c", "f"]);
+
+  // When everything is visible it is an ordinary reorder.
+  eq("nothing hidden behaves normally",
+     ids(M.reorderWithin(all, all, 0, 5)), ["b", "c", "d", "e", "f", "a"]);
+
+  // Degenerate shapes.
+  eq("no movement changes nothing", ids(M.reorderWithin(all, seen, 1, 1)), ids(all));
+  eq("out of range is ignored", ids(M.reorderWithin(all, seen, 0, 9)), ids(all));
+  eq("an empty visible list is safe", ids(M.reorderWithin(all, [], 0, 1)), ids(all));
+  eq("a visible item that is not in the list is dropped",
+     ids(M.reorderWithin(all, [{ id: "ghost" }, all[2]], 0, 1)), ids(all));
+  eq("the originals are untouched", all.map((x) => x.order), [0, 1, 2, 3, 4, 5]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

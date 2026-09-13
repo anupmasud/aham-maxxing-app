@@ -93,6 +93,35 @@ export function reorder(list, from, to) {
   return items.map((x, i) => ({ ...x, order: i }));
 }
 
+/* Reorders a list you can only see part of.
+
+   Today shows what applies today: a target scheduled Mon/Wed/Fri is simply
+   not there on a Tuesday. Dragging inside that list and then renumbering
+   everything would give the hidden ones positions decided by a list they were
+   never in — move one thing on Tuesday and find Friday rearranged.
+
+   So the visible items are reshuffled among the positions they already
+   occupied, and everything else keeps the place it had. `visible` is in the
+   order it appears on screen; `from` and `to` are indexes into it. */
+export function reorderWithin(all, visible, from, to) {
+  const full = [...(all || [])];
+  const seen = (visible || []).filter((v) => full.some((a) => a.id === v.id));
+  if (from < 0 || from >= seen.length || to < 0 || to >= seen.length) {
+    return full.map((x, i) => ({ ...x, order: i }));
+  }
+
+  // The slots the visible items hold in the full list, low to high.
+  const slots = seen
+    .map((v) => full.findIndex((a) => a.id === v.id))
+    .sort((a, b) => a - b);
+
+  const moved = reorder(seen, from, to);
+  moved.forEach((item, i) => {
+    full[slots[i]] = (all || []).find((a) => a.id === item.id);
+  });
+  return full.map((x, i) => ({ ...x, order: i }));
+}
+
 /* ------------------------------------------------------------- end date --
    A recurring plan repeats forever unless something stops it. `until` is the
    last date a target runs, inclusive — Spanish every day until the trip, the

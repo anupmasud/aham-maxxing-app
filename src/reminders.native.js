@@ -42,7 +42,7 @@ export function reminderBody(doc) {
   const today = M.todayKey();
   const targets = doc.targets || [];
   const log = doc.log || {};
-  const s = M.dayScore(today, targets, log);
+  const s = M.dayScore(today, targets, log, doc.breaks || []);
 
   const open = targets.filter(
     (t) => !t.archived && t.period === "day" && t.dir === "at_least" &&
@@ -66,6 +66,14 @@ export async function sync(doc) {
 
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
   if (!r.enabled) return { scheduled: false };
+
+  /* A nudge listing what is still open, on a day the app has been told to ask
+     nothing, is the one thing a break is for avoiding. Nothing is scheduled
+     while you are away; opening the app after you are back sets it again, as
+     does any change to the document. */
+  if (M.suspendedOn((doc && doc.breaks) || [], M.todayKey())) {
+    return { scheduled: false, away: true };
+  }
 
   const ok = await requestPermission();
   if (!ok) return { scheduled: false, denied: true };

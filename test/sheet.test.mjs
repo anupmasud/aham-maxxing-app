@@ -50,6 +50,12 @@ const doc = {
       period: "week", goal: 6, unit: "units", step: 1, days: [0,1,2,3,4,5,6], until: "", order: 3,
       archived: false, note: "", types: [], plan: {} },
   ],
+  breaks: [
+    { id: "b_1", from: "2026-09-14", to: "2026-09-21", kind: "away",
+      count: false, note: "Walking week" },
+    { id: "b_2", from: "2026-10-01", to: "2026-10-30", kind: "away",
+      count: true, note: "Camino" },
+  ],
   notes: {
     "2026-09-01": { t_str: 'Knee clicked on the third set. Dropped to 40kg, "fine after".' },
     "2026-09-02": { t_water: "Travelling, only had a bottle." },
@@ -64,8 +70,8 @@ const doc = {
 console.log("\n1. what the tabs look like");
 {
   const tabs = M.docToSheets(doc);
-  eq("seven tabs", Object.keys(tabs).sort(),
-     ["Categories", "Log", "Notes", "Plan", "Settings", "Targets", "Types"]);
+  eq("eight tabs", Object.keys(tabs).sort(),
+     ["Away", "Categories", "Log", "Notes", "Plan", "Settings", "Targets", "Types"]);
   eq("targets carry the category by name", tabs.Targets[1][col("category")], "Movement");
   eq("restricted days written as names", tabs.Targets[3][col("days")], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][col("days")], "All");
@@ -378,6 +384,34 @@ console.log("\n11. a note for one target on one day");
   const older = { ...tabs, Notes: [] };
   eq("an older sheet reads as no notes", M.sheetsToDoc(older, doc).notes, {});
   eq("with everything else intact", M.sheetsToDoc(older, doc).targets.length, 4);
+}
+
+console.log("\n12. time away survives the round trip");
+{
+  const tabs = M.docToSheets(doc);
+  eq("header", tabs.Away[0], ["id", "from", "to", "kind", "counts", "note"]);
+  eq("a suspended break", tabs.Away[1], ["b_1", "2026-09-14", "2026-09-21", "away", "FALSE", "Walking week"]);
+  eq("and one that counts", tabs.Away[2], ["b_2", "2026-10-01", "2026-10-30", "away", "TRUE", "Camino"]);
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("both come back", back.breaks.map((b) => b.id), ["b_1", "b_2"]);
+  eq("the switch survives", back.breaks.map((b) => b.count), [false, true]);
+  eq("and the note", back.breaks[1].note, "Camino");
+
+  // Typed in by hand, end-first, and with no id.
+  const byHand = { ...tabs, Away: [M.BREAK_HEAD, ["", "2026-12-30", "2026-12-24", "unwell", "", "flu"]] };
+  const read = M.sheetsToDoc(byHand, doc).breaks[0];
+  eq("dates put the right way round", [read.from, read.to], ["2026-12-24", "2026-12-30"]);
+  eq("a missing id is replaced", read.id, "b_2026-12-24");
+  eq("blank counts reads as suspended", read.count, false);
+
+  // An unreadable row is skipped, not fatal.
+  const messy = { ...tabs, Away: [M.BREAK_HEAD, ["b_x", "not a date", "", "away", "", ""], tabs.Away[1]] };
+  eq("one bad row does not cost the others",
+     M.sheetsToDoc(messy, doc).breaks.map((b) => b.id), ["b_1"]);
+
+  // A sheet written before the tab existed.
+  eq("an older sheet has none", M.sheetsToDoc({ ...tabs, Away: [] }, doc).breaks, []);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

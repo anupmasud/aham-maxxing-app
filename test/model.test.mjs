@@ -736,5 +736,84 @@ console.log("\n26. clearing everything up to a date");
   eq("and the result is a new one", kept === doc, false);
 }
 
+console.log("\n27. time away: nothing applies, unless you say it does");
+{
+  const mon = monday;
+  const wk = thisWeek;
+  const away = [M.makeBreak({ from: wk[1], to: wk[3], kind: "away", note: "trip" })];
+
+  eq("a break is found by any day inside it", !!M.breakOn(away, wk[2]), true);
+  eq("inclusive at the start", !!M.breakOn(away, wk[1]), true);
+  eq("and at the end", !!M.breakOn(away, wk[3]), true);
+  eq("but not the day before", !!M.breakOn(away, wk[0]), false);
+  eq("nor the day after", !!M.breakOn(away, wk[4]), false);
+  eq("its length counts both ends", M.breakLength(away[0]), 3);
+
+  eq("a day inside is suspended", M.suspendedOn(away, wk[2]), true);
+  eq("a day outside is not", M.suspendedOn(away, wk[5]), false);
+  eq("the whole week is touched", M.weekSuspended(away, wk[6]), true);
+
+  // Dates typed the wrong way round are a slip, not an empty range.
+  const backwards = M.makeBreak({ from: wk[3], to: wk[1] });
+  eq("stored the right way round", [backwards.from, backwards.to], [wk[1], wk[3]]);
+  eq("a range needs two real dates", M.makeBreak({ from: "nope", to: wk[1] }), null);
+
+  /* Nothing is due, and nothing is judged. */
+  const empty = {};
+  eq("twelve things due on a normal day", M.dayScore(wk[0], [T.walk, T.steps, T.floss], empty).due > 0, true);
+  eq("nothing due on a day away", M.dayScore(wk[2], [T.walk, T.steps, T.floss], empty, away).due, 0);
+  eq("and it does not read as a failure", M.dayScore(wk[2], [T.walk, T.steps], empty, away).pct, 0);
+
+  const overLimit = { [wk[2]]: { coffee: 9 } };
+  eq("a ceiling is broken on a normal day", M.dayLimitsBroken(wk[2], ALL, overLimit), 1);
+  eq("but not judged while away", M.dayLimitsBroken(wk[2], ALL, overLimit, away), 0);
+
+  /* Hit rates skip the days, rather than counting them as missed. */
+  const sevenDays = wk;
+  eq("seven days scheduled normally", M.targetStats(T.walk, sevenDays, empty).n, 7);
+  eq("three of them dropped while away", M.targetStats(T.walk, sevenDays, empty, away).n, 4);
+
+  eq("a weekly target is judged on a normal week", M.targetStats(T.gym, sevenDays, empty).n, 1);
+  eq("and not at all on a week touched by a break",
+     M.targetStats(T.gym, sevenDays, empty, away).n, 0);
+
+  eq("pooled rates drop them too",
+     M.periodStats([T.walk], sevenDays, empty, "day", away).n, 4);
+
+  /* Logging during a break is kept and still counts for you. */
+  const walked = { [wk[2]]: { walk: 45 } };
+  eq("the entry is still there", M.valueOn(walked, "walk", wk[2]), 45);
+  eq("and the day still reads as met", M.progress(T.walk, wk[2], walked).met, true);
+
+  /* A streak crosses a break rather than ending at it. */
+  const logAll = {};
+  [-9, -8, -7, -6, -5, -4, -3, -2, -1, 0].forEach((d) => { logAll[K(d)] = { floss: true }; });
+  const gap = [M.makeBreak({ from: K(-5), to: K(-3) })];
+  delete logAll[K(-5)]; delete logAll[K(-4)]; delete logAll[K(-3)];
+  const flossDaily = { ...T.floss, days: M.ALL_DAYS };
+  eq("without the break the run stops at the gap",
+     M.streak(flossDaily, logAll, K(-30)), 3);
+  eq("with it, the run carries across", M.streak(flossDaily, logAll, K(-30), gap), 7);
+
+  /* A break that counts is a label, not a suspension. */
+  const camino = [M.makeBreak({ from: wk[1], to: wk[3], note: "Camino", count: true })];
+  eq("it still shows as a break", !!M.breakOn(camino, wk[2]), true);
+  eq("but suspends nothing", M.suspendedOn(camino, wk[2]), false);
+  eq("so the days are scored", M.targetStats(T.walk, sevenDays, empty, camino).n, 7);
+  eq("and the week is judged", M.targetStats(T.gym, sevenDays, empty, camino).n, 1);
+  eq("flipping the switch suspends it",
+     M.suspendedOn(M.setBreakCount(camino, camino[0].id, false), wk[2]), true);
+
+  /* Removing a break puts every day back exactly as it was. */
+  eq("removed", M.removeBreak(away, away[0].id), []);
+  eq("and the days return", M.targetStats(T.walk, sevenDays, empty, M.removeBreak(away, away[0].id)).n, 7);
+
+  eq("no breaks at all is safe", M.suspendedOn(undefined, wk[0]), false);
+  eq("newest first", M.sortBreaks([
+    M.makeBreak({ from: "2026-01-01", to: "2026-01-02" }),
+    M.makeBreak({ from: "2026-06-01", to: "2026-06-02" }),
+  ]).map((b) => b.from), ["2026-06-01", "2026-01-01"]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

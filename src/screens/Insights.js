@@ -19,6 +19,7 @@ export default function Insights({ doc, setDay, setTab }) {
 
   const targets = M.liveTargets(doc.targets || []);
   const log = doc.log || {};
+  const breaks = doc.breaks || [];
   /* The window starts at the earlier of "when this document was made" and
      "the first day anything was logged". Backfilling last week's entries into
      a file created today is normal, and bounding by the creation date alone
@@ -46,20 +47,20 @@ export default function Insights({ doc, setDay, setTab }) {
 
   if (days === 0) {
     return (
-      <ThisWeek doc={doc} targets={targets} log={log}
+      <ThisWeek doc={doc} targets={targets} log={log} breaks={breaks}
                 setDays={setDays} setDay={setDay} setTab={setTab} />
     );
   }
 
-  const stat = (t) => M.targetStats(t, keys, log);
+  const stat = (t) => M.targetStats(t, keys, log, breaks);
 
   /* Daily targets are counted in days and weekly ones in weeks, never mixed:
      dividing a count of days by a count of weeks is not a percentage of
      anything. */
-  const daily = M.periodStats(targets, keys, log, "day");
-  const weekly = M.periodStats(targets, keys, log, "week");
+  const daily = M.periodStats(targets, keys, log, "day", breaks);
+  const weekly = M.periodStats(targets, keys, log, "week", breaks);
 
-  const scores = keys.map((k) => M.dayScore(k, targets, log)).filter((s) => s.due > 0);
+  const scores = keys.map((k) => M.dayScore(k, targets, log, breaks)).filter((s) => s.due > 0);
   const perfect = scores.filter((s) => s.pct >= 1 && s.broken === 0).length;
 
   const floors = targets.filter((t) => t.dir === "at_least");
@@ -104,7 +105,7 @@ export default function Insights({ doc, setDay, setTab }) {
       <Card title="Targets" sub="hit rate">
         {floors.map((t) => {
           const s = stat(t);
-          const st = M.streak(t, log, from);
+          const st = M.streak(t, log, from, breaks);
           return (
             <BarRow key={t.id} label={t.name}
                     sub={`${s.done}/${s.n} ${s.unit}${st ? ` · streak ${st}` : ""}`}
@@ -137,7 +138,7 @@ export default function Insights({ doc, setDay, setTab }) {
       })}
 
       <Card title="Every day" sub="Mon to Sun, week by week">
-        <Heat keys={keys} targets={targets} log={log} />
+        <Heat keys={keys} targets={targets} log={log} breaks={breaks} />
       </Card>
     </ScrollView>
   );
@@ -148,7 +149,7 @@ export default function Insights({ doc, setDay, setTab }) {
    time to do something about it. Deliberately forward-looking — "2 to go, 3
    days left" is actionable in a way that "40% kept" is not.                */
 
-function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
+function ThisWeek({ doc, targets, log, breaks, setDays, setDay, setTab }) {
   const today = M.todayKey();
   const monday = M.startOfWeek(new Date());
   const keys = M.weekKeys(monday);
@@ -160,7 +161,7 @@ function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
   /* Days so far, not the whole week: judging Wednesday against seven days
      would make every week look like a failure until Sunday night. */
   const past = keys.slice(0, elapsed);
-  const scores = past.map((k) => M.dayScore(k, targets, log)).filter((s) => s.due > 0);
+  const scores = past.map((k) => M.dayScore(k, targets, log, breaks)).filter((s) => s.due > 0);
   const done = scores.reduce((a, s) => a + s.done, 0);
   const due = scores.reduce((a, s) => a + s.due, 0);
 
@@ -194,7 +195,7 @@ function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
           </Text>
           <View style={[S.row, { gap: 4, marginTop: 8 }]}>
             {keys.map((k, i) => {
-              const s = M.dayScore(k, targets, log);
+              const s = M.dayScore(k, targets, log, breaks);
               const future = M.isFuture(k);
               return (
                 <Pressable key={k} onPress={() => openDay(k)} style={{ flex: 1, opacity: future ? 0.35 : 1 }}>
@@ -216,7 +217,10 @@ function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
       {groups.map(({ cat, rows }) => (
         <View key={cat.id} style={[S.card, S.cardPad]}>
           <Text style={[S.h2, { marginBottom: 4 }]}>{cat.emoji} {cat.name}</Text>
-          {rows.map((t) => <WeekRow key={t.id} t={t} log={log} keys={keys} elapsed={elapsed} left={left} />)}
+          {rows.map((t) => (
+            <WeekRow key={t.id} t={t} log={log} breaks={breaks}
+                     keys={keys} elapsed={elapsed} left={left} />
+          ))}
         </View>
       ))}
 
@@ -228,7 +232,7 @@ function ThisWeek({ doc, targets, log, setDays, setDay, setTab }) {
 }
 
 /* One target's standing this week, phrased as what is still to do. */
-function WeekRow({ t, log, keys, elapsed, left }) {
+function WeekRow({ t, log, breaks, keys, elapsed, left }) {
   const ceiling = t.dir === "at_most";
   const today = M.todayKey();
 
@@ -251,7 +255,11 @@ function WeekRow({ t, log, keys, elapsed, left }) {
       tone = p.met ? C.good : togo > left && left >= 0 ? C.warn : C.good;
     }
   } else {
-    const sched = keys.slice(0, elapsed).filter((k) => M.appliesOn(t, k));
+    /* Days away are not days you could have done it. "2 of 7" on a week you
+       spent three days ill reads as five misses, which is the arithmetic
+       saying the opposite of what the break was for. */
+    const sched = keys.slice(0, elapsed)
+      .filter((k) => M.appliesOn(t, k) && !M.suspendedOn(breaks, k));
     const hit = sched.filter((k) => M.progress(t, k, log).met).length;
     ratio = sched.length ? hit / sched.length : 0;
     if (ceiling) {
@@ -364,7 +372,7 @@ function Spark({ series, goal }) {
   );
 }
 
-function Heat({ keys, targets, log }) {
+function Heat({ keys, targets, log, breaks }) {
   const first = M.startOfWeek(M.parseKey(keys[0]));
   const last = M.startOfWeek(M.parseKey(keys[keys.length - 1]));
   const weeks = Math.round(M.daysBetween(M.keyOf(first), M.keyOf(last)) / 7);
@@ -377,8 +385,9 @@ function Heat({ keys, targets, log }) {
         <Text style={{ width: 20, fontSize: 9, color: C.ink3, fontWeight: "600" }}>{monday.getDate()}</Text>
         {M.weekKeys(monday).map((k) => {
           const outside = M.isFuture(k) || M.daysBetween(keys[0], k) < 0;
-          const s = outside ? null : M.dayScore(k, targets, log);
-          const broken = !outside && M.dayLimitsBroken(k, targets, log);
+          const away = M.suspendedOn(breaks, k);
+          const s = outside || away ? null : M.dayScore(k, targets, log, breaks);
+          const broken = !outside && !away && M.dayLimitsBroken(k, targets, log, breaks);
           let bg = C.ruleSoft, opacity = 1;
           if (outside) opacity = 0.3;
           else if (s.due) {

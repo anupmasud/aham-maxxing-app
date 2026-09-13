@@ -239,8 +239,12 @@ export default function App() {
 
   /* ---------------------------------------------------------------- app -- */
 
+  /* Nothing to report on a day away — a pill saying "4 left today" sitting
+     above a card saying nothing is asked of you is the app arguing with
+     itself, and the pill is the half that is wrong. */
   const outstanding = (() => {
-    const s = M.dayScore(M.todayKey(), doc.targets || [], doc.log || {});
+    if (M.suspendedOn(doc.breaks, M.todayKey())) return null;
+    const s = M.dayScore(M.todayKey(), doc.targets || [], doc.log || {}, doc.breaks || []);
     if (s.broken) return { text: `${s.broken} limit${s.broken > 1 ? "s" : ""} over`, tone: C.over };
     if (s.due - s.done > 0) return { text: `${s.due - s.done} left today`, tone: C.warn };
     if (s.due > 0) return { text: "Day complete", tone: C.good };

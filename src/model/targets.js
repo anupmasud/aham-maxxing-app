@@ -118,6 +118,92 @@ export function appliesOn(t, dayKey) {
 
 export const isFuture = (dayKey) => daysBetween(todayKey(), dayKey) > 0;
 
+/* ---------------------------------------------------------------- away --
+   Days the app asks nothing of you.
+
+   A holiday or a week of flu is not a week you failed. Left alone it reads as
+   one: everything missed, a streak broken, and a month's hit rate dragged
+   down by days you were never going to be counting in. Pausing twenty-eight
+   targets by hand is the alternative, and it still records the days as missed
+   rather than as absent.
+
+   A break is a date range, inclusive at both ends, and inside it nothing
+   applies: no target is due, no limit is judged, no week touching it is
+   scored, and a streak crosses it rather than ending at it.
+
+   You can still log whatever you like during one — and it is kept, shown, and
+   written to your spreadsheet exactly as any other day. It simply is not
+   counted. Which is the point of `count`: walk the Camino and you may well
+   want those thirty days of walking in your numbers, so a break can be told
+   to score normally after all, and becomes a label on the calendar rather
+   than a suspension. Off by default, because the common case is the week you
+   would rather the app forgot to judge.
+
+   It deletes nothing either way. Remove the break and every day returns
+   exactly as it was — the difference between this and clearing history. */
+
+export const BREAK_KINDS = [
+  { id: "away", label: "Away", note: "travelling, holiday, off the grid" },
+  { id: "unwell", label: "Unwell", note: "ill, injured, recovering" },
+  { id: "other", label: "Other", note: "any stretch that should not be counted" },
+];
+
+export const isBreakKind = (id) => BREAK_KINDS.some((k) => k.id === id);
+
+/* Dates are stored the way round they belong, whichever way round they were
+   given — a range typed end-first is a slip, not an empty range. */
+export function makeBreak({ from, to, kind = "away", note = "", count = false } = {}) {
+  if (!isDateKey(from) || !isDateKey(to)) return null;
+  const [a, b] = from <= to ? [from, to] : [to, from];
+  return {
+    id: uid("b_"),
+    from: a,
+    to: b,
+    kind: isBreakKind(kind) ? kind : "away",
+    note: String(note || "").trim(),
+    count: !!count,
+  };
+}
+
+/* The break covering this date, or null — whether or not it suspends
+   anything, because a screen wants to say "you were away" either way. */
+export function breakOn(breaks, dayKey) {
+  if (!isDateKey(dayKey)) return null;
+  return (breaks || []).find((b) => b && b.from <= dayKey && dayKey <= b.to) || null;
+}
+
+/* Is this date one the app should ask nothing of and judge nothing on?
+
+   A break marked `count` is not suspended: it still shows as a break, and the
+   days inside it score like any other. */
+export function suspendedOn(breaks, dayKey) {
+  const b = breakOn(breaks, dayKey);
+  return !!b && !b.count;
+}
+
+/* Does any day of this date's week fall in a suspended break?
+
+   A weekly goal is judged across the whole week, so there is no honest way to
+   apply it to part of one. "Three times a week" asked of a week you were away
+   for three days of is a different goal, and not the one you set. */
+export function weekSuspended(breaks, dayKey) {
+  if (!isDateKey(dayKey)) return false;
+  return weekKeys(startOfWeek(parseKey(dayKey))).some((k) => suspendedOn(breaks, k));
+}
+
+/* How many days a break covers, inclusive of both ends. */
+export const breakLength = (b) => (b && isDateKey(b.from) && isDateKey(b.to)
+  ? daysBetween(b.from, b.to) + 1 : 0);
+
+/* Newest first — the one you are in or just back from is the one you want. */
+export const sortBreaks = (breaks) =>
+  (breaks || []).slice().sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0));
+
+export const removeBreak = (breaks, id) => (breaks || []).filter((b) => b.id !== id);
+
+export const setBreakCount = (breaks, id, count) =>
+  (breaks || []).map((b) => (b.id === id ? { ...b, count: !!count } : b));
+
 /* ------------------------------------------------------------- progress --
    One function answers "how is this target doing" for both periods. For a
    weekly target the window is the whole week the day falls in; for a daily one
@@ -163,7 +249,8 @@ export const liveTargets = (targets) => targets.filter((t) => !t.archived);
    that has blown its budget is true of the whole week, so colouring every day
    of that week red would let one heavy Friday repaint the other six. Weekly
    ceilings get their own trend line in Insights instead. */
-export function dayLimitsBroken(dayKey, targets, log) {
+export function dayLimitsBroken(dayKey, targets, log, breaks) {
+  if (suspendedOn(breaks, dayKey)) return 0;
   return liveTargets(targets).filter(
     (t) => t.dir === "at_most" && t.period === "day" && appliesOn(t, dayKey) && progress(t, dayKey, log).over
   ).length;
@@ -172,12 +259,21 @@ export function dayLimitsBroken(dayKey, targets, log) {
 /* The day ring counts only the "things to actively do" scheduled that day:
    daily at_least targets. Ceilings are reported beside it as limits kept,
    because a limit you have simply not broken yet should not inflate a score. */
-export function dayScore(dayKey, targets, log) {
+export function dayScore(dayKey, targets, log, breaks) {
   const live = liveTargets(targets);
-  const due = live.filter((t) => t.period === "day" && t.dir === "at_least" && appliesOn(t, dayKey));
+  /* Nothing is due on a suspended day. The ring reads 0 of 0 rather than 0 of
+     twelve, which is the difference between "away" and "a wasted day". */
+  const due = suspendedOn(breaks, dayKey)
+    ? []
+    : live.filter((t) => t.period === "day" && t.dir === "at_least" && appliesOn(t, dayKey));
   const done = due.filter((t) => progress(t, dayKey, log).met).length;
 
-  const limits = live.filter((t) => t.dir === "at_most" && appliesOn(t, dayKey));
+  /* Ceilings go quiet too. "Limits: all clear" on a day the app is not
+     watching them is a claim it is in no position to make, and "1 limit over"
+     is a judgement it was told not to pass. */
+  const limits = suspendedOn(breaks, dayKey)
+    ? []
+    : live.filter((t) => t.dir === "at_most" && appliesOn(t, dayKey));
   const broken = limits.filter((t) => progress(t, dayKey, log).over).length;
 
   return { due: due.length, done, pct: due.length ? done / due.length : 0, limits: limits.length, broken };
@@ -189,7 +285,7 @@ export function dayScore(dayKey, targets, log) {
    `from` is the day the document was created. Nothing before it can count: an
    empty week in the past trivially satisfies "no more than 6 units", which
    would otherwise hand every ceiling an infinite streak reaching back to 1970. */
-export function streak(t, log, from) {
+export function streak(t, log, from, breaks) {
   const floor = from || todayKey();
 
   if (t.period === "week") {
@@ -206,6 +302,8 @@ export function streak(t, log, from) {
          same rule the hit rates use: a week you were only present for part of
          is not a week you kept. */
       if (daysBetween(floor, keyOf(monday)) < 0) break;
+      // A week you were away for is stepped over rather than ending the run.
+      if (weekSuspended(breaks, keyOf(monday))) { monday = addDays(monday, -7); continue; }
       if (!progress(t, keyOf(monday), log).met) break;
       n++;
       monday = addDays(monday, -7);
@@ -214,12 +312,15 @@ export function streak(t, log, from) {
   }
 
   let d = new Date();
-  if (appliesOn(t, keyOf(d)) && !progress(t, keyOf(d), log).met) d = addDays(d, -1);
+  if (appliesOn(t, keyOf(d)) && !suspendedOn(breaks, keyOf(d))
+      && !progress(t, keyOf(d), log).met) d = addDays(d, -1);
   let n = 0;
   for (let i = 0; i < 400; i++) {
     const k = keyOf(d);
     if (daysBetween(floor, k) < 0) break;
-    if (appliesOn(t, k)) {
+    /* A day away is stepped over: it neither adds to the streak nor ends it.
+       Being ill for a week should not cost you forty days of flossing. */
+    if (appliesOn(t, k) && !suspendedOn(breaks, k)) {
       if (!progress(t, k, log).met) break;
       n++;
     }
@@ -233,18 +334,19 @@ export function streak(t, log, from) {
    in weeks. Blending the two would mean dividing a count of days by a count of
    weeks and calling the result a percentage.                                */
 
-export function targetStats(t, keys, log) {
+export function targetStats(t, keys, log, breaks) {
   if (t.period === "week") {
     /* A week only counts if the target ran for all of it. Ending something on
        a Wednesday leaves a two-day week that a "three times a week" goal was
        never going to be met in, and scoring that as a failure would make
        stopping a target look like giving up on it. */
     const mondays = [...new Set(keys.map((k) => keyOf(startOfWeek(parseKey(k)))))]
-      .filter((m) => runsOn(t, keyOf(addDays(parseKey(m), 6))));
+      .filter((m) => runsOn(t, keyOf(addDays(parseKey(m), 6))))
+      .filter((m) => !weekSuspended(breaks, m));
     const done = mondays.filter((m) => progress(t, m, log).met).length;
     return { n: mondays.length, done, pct: mondays.length ? done / mondays.length : 0, unit: "weeks" };
   }
-  const sched = keys.filter((k) => appliesOn(t, k));
+  const sched = keys.filter((k) => appliesOn(t, k) && !suspendedOn(breaks, k));
   const done = sched.filter((k) => progress(t, k, log).met).length;
   return { n: sched.length, done, pct: sched.length ? done / sched.length : 0, unit: "days" };
 }
@@ -260,12 +362,12 @@ export function targetStats(t, keys, log) {
    Ceilings are left out: they are reported as weeks within the limit on their
    own trend, and a limit you have merely not broken should not count as an
    achievement here. */
-export function periodStats(targets, keys, log, period) {
+export function periodStats(targets, keys, log, period, breaks) {
   const ts = liveTargets(targets).filter((t) => t.period === period && t.dir === "at_least");
   let n = 0;
   let done = 0;
   ts.forEach((t) => {
-    const s = targetStats(t, keys, log);
+    const s = targetStats(t, keys, log, breaks);
     n += s.n;
     done += s.done;
   });

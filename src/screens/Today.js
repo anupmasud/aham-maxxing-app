@@ -25,11 +25,13 @@ export default function Today({ doc, update, day, setDay }) {
   const [grouping, setGrouping] = useState("category");
   const log = doc.log || {};
   const notes = doc.notes || {};
+  const breaks = doc.breaks || [];
+  const away = M.breakOn(breaks, day);
   const targets = doc.targets || [];
 
   const diff = M.daysBetween(M.todayKey(), day);
   const date = M.parseKey(day);
-  const score = M.dayScore(day, targets, log);
+  const score = M.dayScore(day, targets, log, breaks);
 
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
   const writeNote = (target, dayKey, text) =>
@@ -90,6 +92,30 @@ export default function Today({ doc, update, day, setDay }) {
           )}
         </View>
       </View>
+
+      {/* ---- away ---- */}
+      {!!away && (
+        <View style={[S.card, {
+          paddingVertical: 12, paddingHorizontal: 14, marginBottom: 12,
+          borderLeftWidth: 3, borderLeftColor: away.count ? C.accent : C.warn,
+        }]}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: C.ink }}>
+            {(M.BREAK_KINDS.find((k) => k.id === away.kind) || {}).label || "Away"}
+            {away.note ? ` · ${away.note}` : ""}
+          </Text>
+          <Text style={[S.tiny, { marginTop: 3 }]}>
+            {M.parseKey(away.from).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+            {" – "}
+            {M.parseKey(away.to).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+            {`  ·  ${M.breakLength(away)} day${M.breakLength(away) === 1 ? "" : "s"}`}
+          </Text>
+          <Text style={[S.tiny, { marginTop: 6 }]}>
+            {away.count
+              ? "These days count as normal — you asked for them in your figures. Change that in Setup."
+              : "Nothing is asked of you and nothing is counted. Log anything you like — it is kept, and it cannot count against you."}
+          </Text>
+        </View>
+      )}
 
       {/* ---- targets ---- */}
       {M.isFuture(day) && (
@@ -455,8 +481,8 @@ function WeekStrip({ doc, day, setDay }) {
   return (
     <View style={[S.row, { gap: 5 }]}>
       {keys.map((k, i) => {
-        const s = M.dayScore(k, doc.targets || [], doc.log || {});
-        const broken = M.dayLimitsBroken(k, doc.targets || [], doc.log || {});
+        const s = M.dayScore(k, doc.targets || [], doc.log || {}, doc.breaks || []);
+        const broken = M.dayLimitsBroken(k, doc.targets || [], doc.log || {}, doc.breaks || []);
         const future = M.isFuture(k);
         return (
           <Pressable key={k} onPress={() => setDay(k)} style={{ flex: 1, opacity: future ? 0.4 : 1 }}>

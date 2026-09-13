@@ -172,6 +172,8 @@ export default function Setup({
         );
       })}
 
+      <TimeAway doc={doc} update={update} confirm={confirm} />
+
       {M.plannedCount(doc.targets) > 0 && (
         <View style={[S.card, S.cardPad]}>
           <Text style={[S.h2, { marginBottom: 6 }]}>Weekly plan</Text>
@@ -497,6 +499,11 @@ function Reminders({ doc, update }) {
         <Text style={[S.h2, { flex: 1 }]}>Daily reminder</Text>
         <Switch value={!!r.enabled} onValueChange={(v) => set({ enabled: v })} />
       </View>
+      {!!r.enabled && M.suspendedOn(doc.breaks, M.todayKey()) && (
+        <Text style={[S.tiny, { marginBottom: 6, color: C.warn }]}>
+          Paused while you are away. It starts again on its own once the dates pass.
+        </Text>
+      )}
       <Text style={S.muted}>
         A single nudge listing what is still open. It says what is left, not how
         long your streak is.
@@ -953,6 +960,111 @@ function Sheet({ title, onClose, children }) {
 /* The model names a tone rather than a colour, so the palette stays in the
    one place that owns it. */
 const TONE = { good: C.good, accent: C.accent, over: C.over };
+
+/* Marking a stretch of time the app should ask nothing of.
+
+   Two dates and a kind. The switch underneath is the Camino case: a month of
+   walking is time away from the routine, but it is also the most walking you
+   will do all year, and you may well want it in your figures. Off by default,
+   because the ordinary reason for being away is not wanting to be judged. */
+function TimeAway({ doc, update, confirm }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [kind, setKind] = useState("away");
+  const [note, setNote] = useState("");
+
+  const breaks = M.sortBreaks(doc.breaks);
+  const draft = M.makeBreak({ from, to, kind, note });
+  const pretty = (k) =>
+    M.parseKey(k).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const span = (b) => `${pretty(b.from)} – ${pretty(b.to)}`;
+
+  const add = () => {
+    if (!draft) return;
+    update((d) => ({ ...d, breaks: [...(d.breaks || []), draft] }));
+    setFrom(""); setTo(""); setNote(""); setKind("away");
+  };
+
+  return (
+    <View style={[S.card, S.cardPad]}>
+      <Text style={[S.h2, { marginBottom: 6 }]}>Time away</Text>
+      <Text style={S.muted}>
+        A holiday or a week of flu is not a week you failed. Mark the dates and
+        nothing is asked of you and nothing is counted — no target due, no limit
+        judged, and a streak crosses it rather than ending. You can still log
+        whatever you like; it is kept either way, and removing the dates puts
+        every day back exactly as it was.
+      </Text>
+
+      {breaks.map((b) => {
+        const label = (M.BREAK_KINDS.find((k) => k.id === b.kind) || {}).label || "Away";
+        return (
+          <View key={b.id} style={[S.row, {
+            marginTop: 10, paddingVertical: 9, paddingHorizontal: 11, gap: 8,
+            borderWidth: 1, borderColor: C.rule, borderRadius: 10, backgroundColor: C.card,
+          }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, color: C.ink }}>
+                {label}{b.note ? ` · ${b.note}` : ""}
+              </Text>
+              <Text style={[S.tiny, { marginTop: 2 }]}>
+                {span(b)}{`  ·  ${M.breakLength(b)} day${M.breakLength(b) === 1 ? "" : "s"}`}
+                {b.count ? "  ·  counted" : ""}
+              </Text>
+              <Pressable onPress={() => update((d) => ({
+                ...d, breaks: M.setBreakCount(d.breaks, b.id, !b.count),
+              }))} hitSlop={6}>
+                <Text style={[S.tiny, { marginTop: 5, color: C.accent }]}>
+                  {b.count ? "Stop counting these days" : "Count these days after all"}
+                </Text>
+              </Pressable>
+            </View>
+            <Mini glyph="✕" danger onPress={() => confirm(
+              `Remove ${label.toLowerCase()}, ${span(b)}?`,
+              "Those days go back to being counted as they were. Nothing you logged is touched.",
+              () => update((d) => ({ ...d, breaks: M.removeBreak(d.breaks, b.id) })),
+              "Remove"
+            )} />
+          </View>
+        );
+      })}
+
+      <Text style={[S.label, { marginTop: 14 }]}>Add time away</Text>
+      <View style={[S.row, { gap: 8 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={S.tiny}>From</Text>
+          <TextInput style={S.input} value={from} onChangeText={setFrom}
+                     placeholder="YYYY-MM-DD" autoCapitalize="none" autoCorrect={false} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={S.tiny}>To</Text>
+          <TextInput style={S.input} value={to} onChangeText={setTo}
+                     placeholder="YYYY-MM-DD" autoCapitalize="none" autoCorrect={false} />
+        </View>
+      </View>
+
+      <View style={[S.row, { gap: 6, marginTop: 10 }]}>
+        {M.BREAK_KINDS.map((k) => (
+          <Seg key={k.id} on={kind === k.id} label={k.label}
+               onPress={() => setKind(k.id)} />
+        ))}
+      </View>
+
+      <TextInput style={[S.input, { marginTop: 10 }]} value={note} onChangeText={setNote}
+                 placeholder="Note (optional) — e.g. Camino" />
+
+      <Text style={[S.tiny, { marginTop: 6, color: from && to && !draft ? C.warn : C.ink3 }]}>
+        {draft
+          ? `${M.breakLength(draft)} day${M.breakLength(draft) === 1 ? "" : "s"}, ${span(draft)}. Nothing will be counted.`
+          : from || to
+            ? "Both dates are needed, as YYYY-MM-DD."
+            : "Both dates are included."}
+      </Text>
+
+      <Btn primary disabled={!draft} label="Add" onPress={add} />
+    </View>
+  );
+}
 
 /* Throwing away the days before you really started.
 

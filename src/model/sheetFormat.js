@@ -12,6 +12,7 @@
      Log         one row per date, one column per target
      Plan        one row per date-specific decision, including the noes
      Notes       one row per day you wrote something about a target
+     Away        one row per stretch the app should ask nothing of you
      Settings    one row per setting
 
    Two principles throughout:
@@ -29,7 +30,7 @@ import { ALL_DAYS, DOW, isDateKey, round2 } from "./targets";
 
 export const TABS = {
   CATS: "Categories", TARGETS: "Targets", TYPES: "Types",
-  LOG: "Log", PLAN: "Plan", NOTES: "Notes", SETTINGS: "Settings",
+  LOG: "Log", PLAN: "Plan", NOTES: "Notes", BREAKS: "Away", SETTINGS: "Settings",
 };
 
 const norm = (v) => String(v == null ? "" : v).trim();
@@ -112,6 +113,7 @@ export const TYPE_HEAD = ["targetId", "target", "typeId", "type", "perWeek", ...
 export const SETTINGS_HEAD = ["setting", "value"];
 export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
 export const NOTE_HEAD = ["date", "target", "targetId", "note"];
+export const BREAK_HEAD = ["id", "from", "to", "kind", "counts", "note"];
 
 /* ------------------------------------------------------------------ out -- */
 
@@ -256,6 +258,17 @@ export function notesOut(doc) {
   return rows;
 }
 
+/* Stretches of time the app asks nothing of. One row each, most recent first,
+   so the tab reads as a list of trips and illnesses rather than a log. */
+export function breaksOut(doc) {
+  const rows = [BREAK_HEAD];
+  (doc.breaks || []).forEach((b) => {
+    if (!b || !isDateKey(b.from) || !isDateKey(b.to)) return;
+    rows.push([b.id, b.from, b.to, b.kind || "away", b.count ? "TRUE" : "FALSE", b.note || ""]);
+  });
+  return rows;
+}
+
 export const docToSheets = (doc) => ({
   [TABS.CATS]: categoriesOut(doc),
   [TABS.TARGETS]: targetsOut(doc),
@@ -263,6 +276,7 @@ export const docToSheets = (doc) => ({
   [TABS.LOG]: logOut(doc),
   [TABS.PLAN]: planOut(doc),
   [TABS.NOTES]: notesOut(doc),
+  [TABS.BREAKS]: breaksOut(doc),
   [TABS.SETTINGS]: settingsOut(doc),
 });
 
@@ -303,6 +317,15 @@ function reader(head, canonical) {
    never thrown — one mangled row must not cost you the other three hundred. */
 export function sheetsToDoc(tabs, base = {}) {
   const rows = (name) => (tabs[name] || []).slice(1).filter((r) => r && norm(r[0]));
+
+  /* Same, but keeping rows whose first cell is empty. Every other tab is
+     keyed by an id in column one, so a blank there means a blank row. The Away
+     tab is the exception: its id is bookkeeping and its meaning is in the
+     dates, so somebody adding a trip by hand would reasonably type the dates
+     and leave the id alone — and dropping that row would be silently ignoring
+     exactly what they told us. */
+  const anyRows = (name) =>
+    (tabs[name] || []).slice(1).filter((r) => r && r.some((c) => norm(c)));
   const head = (name) => (tabs[name] || [])[0];
 
   const cat = reader(head(TABS.CATS), CAT_HEAD);
@@ -418,6 +441,26 @@ export function sheetsToDoc(tabs, base = {}) {
     notes[date] = { ...(notes[date] || {}), [t.id]: body };
   });
 
+  /* Away. An id that has gone missing is regenerated rather than dropping the
+     row — the dates are the part that matters, and an unnamed break is still
+     a week you were away. */
+  const brk = reader(head(TABS.BREAKS), BREAK_HEAD);
+  const breaks = [];
+  anyRows(TABS.BREAKS).forEach((r) => {
+    const from = norm(brk(r, "from"));
+    const to = norm(brk(r, "to"));
+    if (!isDateKey(from) || !isDateKey(to)) return;
+    const [a, b] = from <= to ? [from, to] : [to, from];
+    breaks.push({
+      id: norm(brk(r, "id")) || `b_${a}`,
+      from: a,
+      to: b,
+      kind: norm(brk(r, "kind")) || "away",
+      count: bool(brk(r, "counts")),
+      note: norm(brk(r, "note")),
+    });
+  });
+
   /* Settings read from the sheet win; whatever was in memory is only a
      fallback for a document written before this tab existed. */
   const setting = {};
@@ -429,6 +472,7 @@ export function sheetsToDoc(tabs, base = {}) {
   return {
     version: 1,
     notes,
+    breaks,
     createdAt: pick("createdAt", base.createdAt || new Date().toISOString()),
     template: pick("template", base.template || "default"),
     homeTab: pick("opensOn", base.homeTab || "insights") === "today" ? "today" : "insights",

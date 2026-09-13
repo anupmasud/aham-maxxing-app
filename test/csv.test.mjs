@@ -169,5 +169,34 @@ console.log("\n9. day notes go out and come back");
   eq("and no notes are invented", r2.notes, 0);
 }
 
+console.log("\n10. an exported cell cannot be read as a formula");
+{
+  const doc = {
+    categories: [{ id: "c", name: "Movement" }],
+    targets: [{ id: "t", catId: "c", name: "Walk", kind: "amount", dir: "at_least",
+                period: "day", goal: 30, unit: "min", step: 5, types: [] }],
+    log: { "2026-09-01": { t: 30 } },
+    notes: { "2026-09-01": { t: '=HYPERLINK("http://example.test","click me")' } },
+  };
+  const rows = M.parseCsv(M.exportCsv(doc));
+  eq("a formula is written as text",
+     rows[1][6], '\'=HYPERLINK("http://example.test","click me")');
+
+  const cell = (note) => M.parseCsv(M.exportCsv({ ...doc, notes: { "2026-09-01": { t: note } } }))[1][6];
+  eq("+ too", cell("+1+1"), "'+1+1");
+  eq("@ too", cell("@SUM(A1)"), "'@SUM(A1)");
+  eq("and a tab", cell("\tx"), "'\tx");
+  eq("ordinary prose is untouched", cell("Windy, went the long way."), "Windy, went the long way.");
+  eq("so is a note that merely contains one", cell("goal = 3L"), "goal = 3L");
+
+  // Numbers keep their sign; only a dash that is not a number is suspect.
+  eq("a negative number stays a number", M.parseCsv(M.toCsvText([[-3]]))[0][0], "-3");
+  eq("a decimal stays a number", M.parseCsv(M.toCsvText([["-2.5"]]))[0][0], "-2.5");
+  // "-1+1" is arithmetic to a spreadsheet, not a number, so it is quoted.
+  eq("a dash-led formula is neutralised", M.parseCsv(M.toCsvText([["-1+1"]]))[0][0], "'-1+1");
+  eq("as is the classic command payload",
+     M.parseCsv(M.toCsvText([["-2+3+cmd|' /C calc'!A0"]]))[0][0], "'-2+3+cmd|' /C calc'!A0");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

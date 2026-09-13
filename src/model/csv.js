@@ -47,8 +47,21 @@ export function parseCsv(text) {
   return rows.map((r) => r.map((v) => v.trim()));
 }
 
+/* A cell a spreadsheet would read as a formula rather than as words.
+
+   Notes are free text, and a note that begins "=" or "+" is treated by Excel,
+   Numbers and Sheets as something to evaluate when the file is opened —
+   which is how a exported file becomes a way to run something on the machine
+   of whoever opens it. Prefixing an apostrophe makes it text again; it is the
+   standard fix and it is invisible in every spreadsheet that reads it.
+
+   Numbers are left alone, so "-3" stays a number rather than becoming "'-3". */
+const RISKY_START = /^[=+@\t\r]/;
+const neutralise = (s) =>
+  RISKY_START.test(s) || (s.startsWith("-") && !Number.isFinite(Number(s))) ? `'${s}` : s;
+
 const quote = (v) => {
-  const s = v == null ? "" : String(v);
+  const s = neutralise(v == null ? "" : String(v));
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

@@ -61,7 +61,7 @@ export function useCloudDoc() {
     setStatus(cached ? "ready" : "loading");
 
     try {
-      const found = await Sheets.loadDoc({ createIn });
+      const found = await Sheets.loadDoc({ createIn, email: u.email });
 
       /* Nothing exists yet and nobody has said where it should go. Ask, rather
          than quietly creating a spreadsheet somewhere in their Drive and
@@ -132,7 +132,7 @@ export function useCloudDoc() {
         // Fetch the other side so the user can actually compare, rather than
         // being asked to choose blind.
         try {
-          const { doc: theirs } = await Sheets.loadDoc();
+          const { doc: theirs } = await Sheets.loadDoc({ email: user?.email });
           setConflict({ mine: latest.current, theirs });
         } catch (_) {
           setConflict({ mine: latest.current, theirs: null });
@@ -178,7 +178,7 @@ export function useCloudDoc() {
       setDoc(conflict.theirs);
       latest.current = conflict.theirs;
       if (user) await cache(user.email, conflict.theirs);
-      const fresh = await Sheets.loadDoc();
+      const fresh = await Sheets.loadDoc({ email: user?.email });
       baseTime.current = fresh.modifiedTime;
       setConflict(null);
       setStatus("ready");
@@ -249,8 +249,21 @@ export function useCloudDoc() {
     }
   }, []);
 
+  /* Signing out takes the copy on this device with it.
+
+     It used to clear only what was in memory, leaving the whole document in
+     local storage under the address it was cached at — fine for one person on
+     their own phone, wrong the moment "sign out" is something you do so
+     somebody else can sign in. On the web that storage is readable by anything
+     running on the page, so the copy outliving the session is the copy worth
+     removing. Disconnect already did this; sign-out should not be the weaker
+     of the two. */
   const signOut = useCallback(async () => {
     clearTimeout(timer.current);
+    if (user) {
+      try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {}
+      await Sheets.forgetSheet(user.email);
+    }
     await Auth.signOut();
     setUser(null);
     setDoc(null);
@@ -260,12 +273,15 @@ export function useCloudDoc() {
     baseTime.current = null;
     setConflict(null);
     setStatus("signed-out");
-  }, []);
+  }, [user]);
 
   /* Cuts the app's Drive access off at Google's end, not just locally. */
   const disconnect = useCallback(async () => {
     clearTimeout(timer.current);
-    if (user) { try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {} }
+    if (user) {
+      try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {}
+      await Sheets.forgetSheet(user.email);
+    }
     await Auth.revokeAccess();
     setUser(null);
     setDoc(null);

@@ -20,7 +20,13 @@ import { TABS, docToSheets, sheetsToDoc } from "../model/sheetFormat";
 
 const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 const FILES = "https://www.googleapis.com/drive/v3/files";
-const SHEET_CACHE = "ahammaxxing:sheetId";
+/* Keyed by account. One global key was enough while this was a thing one
+   person ran on their own phone; once two people can sign in on the same
+   device it is a note saying "the spreadsheet is over there" left lying
+   around for whoever signs in next. Reaching it needed their token to work on
+   a file drive.file would refuse them, so it failed shut — but failing shut by
+   luck is not the same as not pointing at it. */
+const sheetCacheKey = (email) => `ahammaxxing:sheetId:${email || "anon"}`;
 const SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 
 const TITLE = CONFIG.sheetName || "AhamMaxxing";
@@ -132,19 +138,20 @@ async function ensureTabs(id) {
    Deliberately does not create it: where someone's data lands is their
    decision to make, not a side effect of opening the app. `createIn` is passed
    only once they have said where. */
-async function sheetId({ createIn = null } = {}) {
+async function sheetId({ createIn = null, email = null } = {}) {
+  const key = sheetCacheKey(email);
   try {
-    const cached = await AsyncStorage.getItem(SHEET_CACHE);
+    const cached = await AsyncStorage.getItem(key);
     if (cached) {
       const meta = await req(`${FILES}/${cached}?fields=id,trashed`).catch(() => null);
       if (meta && !meta.trashed) return cached;
-      await AsyncStorage.removeItem(SHEET_CACHE);
+      await AsyncStorage.removeItem(key);
     }
   } catch (_) { /* resolve properly below */ }
 
   const found = await findSheet();
   if (found) {
-    try { await AsyncStorage.setItem(SHEET_CACHE, found.id); } catch (_) {}
+    try { await AsyncStorage.setItem(key, found.id); } catch (_) {}
     return found.id;
   }
 
@@ -152,14 +159,20 @@ async function sheetId({ createIn = null } = {}) {
 
   const folderId = await resolveFolder({ path: createIn });
   const id = await createSheet(folderId);
-  try { await AsyncStorage.setItem(SHEET_CACHE, id); } catch (_) {}
+  try { await AsyncStorage.setItem(key, id); } catch (_) {}
   return id;
+}
+
+/* Drops this account's pointer to its spreadsheet. Called on sign-out, so a
+   device handed to somebody else is not still holding it. */
+export async function forgetSheet(email) {
+  try { await AsyncStorage.removeItem(sheetCacheKey(email)); } catch (_) {}
 }
 
 /* ------------------------------------------------------------------ read -- */
 
-export async function loadDoc({ createIn = null } = {}) {
-  const id = await sheetId({ createIn });
+export async function loadDoc({ createIn = null, email = null } = {}) {
+  const id = await sheetId({ createIn, email });
   if (!id) return { id: null, needsLocation: true };
 
   await ensureTabs(id);

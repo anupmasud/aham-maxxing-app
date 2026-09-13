@@ -76,6 +76,23 @@ export const typesOn = (log, targetId, dayKey) => entryOf(log, targetId, dayKey)
 
 export const hasTypes = (t) => Array.isArray(t.types) && t.types.length > 0;
 
+/* Moves one item to a new position and renumbers the whole list.
+
+   Renumbering rather than nudging one value keeps `order` a plain 0..n-1
+   sequence, so nothing accumulates ties or gaps however many times things are
+   dragged about. Pure, and used for both the categories and the targets inside
+   one — the two lists differ in everything except this. */
+export function reorder(list, from, to) {
+  const items = [...(list || [])];
+  const n = items.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) {
+    return items.map((x, i) => ({ ...x, order: i }));
+  }
+  const [moved] = items.splice(from, 1);
+  items.splice(to, 0, moved);
+  return items.map((x, i) => ({ ...x, order: i }));
+}
+
 /* ------------------------------------------------------------- end date --
    A recurring plan repeats forever unless something stops it. `until` is the
    last date a target runs, inclusive — Spanish every day until the trip, the

@@ -10,6 +10,7 @@ import {
 } from "../model/seed";
 import { guessCategory } from "../model/templates";
 import { GROUP_MODES, groupTargets } from "../model/grouping";
+import { DragHint, Reorderable } from "../ui/Reorder";
 import { applyImport, readImport } from "../model/csv";
 import { CONFIG } from "../config";
 
@@ -48,6 +49,31 @@ export default function Setup({
   const confirm = (title, message, onConfirm, confirmLabel) =>
     setConfirming({ title, message, onConfirm, confirmLabel });
 
+  /* Dragging is offered only while the list is arranged by area. Grouped by
+     cadence the order on screen is derived — every day, then every week, then
+     limits — so a grip there would promise to move something to a place the
+     arrangement would immediately take back. */
+  const draggable = grouping === "category";
+
+  const moveCategory = (from, to) =>
+    update((d) => ({
+      ...d,
+      categories: M.reorder(
+        (d.categories || []).slice().sort((a, b) => a.order - b.order), from, to),
+    }));
+
+  /* Only this category's targets are renumbered; every other category keeps
+     the order it had, since `order` is counted within a category. */
+  const moveTarget = (catId, from, to) =>
+    update((d) => {
+      const mine = (d.targets || []).filter((t) => t.catId === catId)
+        .sort((a, b) => a.order - b.order);
+      const moved = M.reorder(mine, from, to);
+      const byId = {};
+      moved.forEach((t) => { byId[t.id] = t; });
+      return { ...d, targets: (d.targets || []).map((t) => byId[t.id] || t) };
+    });
+
   return (
     <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
       <View style={[S.row, { marginBottom: 14 }]}>
@@ -64,7 +90,14 @@ export default function Setup({
         ))}
       </View>
 
-      {groups.map((g) => {
+      {draggable && groups.length > 1 && <DragHint what="your areas" />}
+
+      <Reorderable
+        items={groups}
+        onReorder={draggable ? moveCategory : () => {}}
+        keyOf={(g) => g.id}
+      >
+      {(g, _gi, catGrip) => {
         const ts = g.targets;
         const chips = g.catId ? suggestionsFor(doc, g.catId) : [];
         const live = ts.filter((t) => !t.archived).length;
@@ -74,6 +107,7 @@ export default function Setup({
               cat={{ name: g.name, emoji: g.emoji, color: g.color || TONE[g.tone] }}
               right={g.catId ? (
                 <View style={[S.row, { gap: 4 }]}>
+                  {draggable && groups.length > 1 && catGrip}
                   <Mini glyph="✎" onPress={() => setEditCat({ cat: catById[g.catId] })} />
                   <Mini glyph="✕" danger onPress={() => confirm(
                     `Delete "${g.name}"?`,
@@ -112,10 +146,15 @@ export default function Setup({
                     style={{ paddingHorizontal: 13, paddingTop: 9, marginTop: 0 }} />
             )}
 
-            {ts.map((t, i) => {
+            <Reorderable
+              items={ts}
+              onReorder={draggable && g.catId ? (a, b) => moveTarget(g.catId, a, b) : () => {}}
+              keyOf={(t) => t.id}
+            >
+            {(t, i, grip) => {
               const cat = catById[t.catId];
               return (
-                <View key={t.id}>
+                <View>
                   {i > 0 && <View style={S.rule} />}
                   <View style={[S.row, { paddingVertical: 10, paddingHorizontal: 13, gap: 8 }]}>
                     <View style={{ flex: 1 }}>
@@ -134,6 +173,7 @@ export default function Setup({
                       </Text>
                       <Note text={t.note} />
                     </View>
+                    {draggable && g.catId && ts.length > 1 && grip}
                     <Mini glyph={t.archived ? "▶" : "❚❚"} onPress={() => update((d) => ({
                       ...d, targets: d.targets.map((x) => x.id === t.id ? { ...x, archived: !x.archived } : x),
                     }))} />
@@ -154,7 +194,8 @@ export default function Setup({
                   </View>
                 </View>
               );
-            })}
+            }}
+            </Reorderable>
 
             <View style={{ paddingHorizontal: 13, paddingBottom: 12, paddingTop: ts.length ? 8 : 0 }}>
               <View style={[S.row, { flexWrap: "wrap" }]}>
@@ -170,7 +211,8 @@ export default function Setup({
             </View>
           </View>
         );
-      })}
+      }}
+      </Reorderable>
 
       <TimeAway doc={doc} update={update} confirm={confirm} />
 

@@ -819,5 +819,36 @@ console.log("\n27. time away: nothing applies, unless you say it does");
   ]).map((b) => b.from), ["2026-06-01", "2026-01-01"]);
 }
 
+console.log("\n28. dragging something into a new position");
+{
+  const list = ["a", "b", "c", "d"].map((id, i) => ({ id, order: i }));
+  const ids = (l) => l.map((x) => x.id);
+  const orders = (l) => l.map((x) => x.order);
+
+  eq("down one", ids(M.reorder(list, 0, 1)), ["b", "a", "c", "d"]);
+  eq("down to the end", ids(M.reorder(list, 0, 3)), ["b", "c", "d", "a"]);
+  eq("up one", ids(M.reorder(list, 2, 1)), ["a", "c", "b", "d"]);
+  eq("up to the top", ids(M.reorder(list, 3, 0)), ["d", "a", "b", "c"]);
+
+  /* order is rewritten as a plain sequence every time, so dragging something
+     back and forth for a minute cannot leave ties or gaps behind. */
+  eq("renumbered 0..n-1", orders(M.reorder(list, 3, 0)), [0, 1, 2, 3]);
+  const messy = [{ id: "a", order: 9 }, { id: "b", order: 9 }, { id: "c", order: 400 }];
+  eq("ties and gaps are tidied even without a move",
+     orders(M.reorder(messy, 1, 1)), [0, 1, 2]);
+  eq("and the order they were in is kept", ids(M.reorder(messy, 1, 1)), ["a", "b", "c"]);
+
+  eq("nothing moves nowhere", ids(M.reorder(list, 2, 2)), ["a", "b", "c", "d"]);
+  eq("out of range is ignored", ids(M.reorder(list, 0, 9)), ["a", "b", "c", "d"]);
+  eq("so is a negative", ids(M.reorder(list, -1, 2)), ["a", "b", "c", "d"]);
+  eq("an empty list is safe", M.reorder([], 0, 1), []);
+  eq("so is no list at all", M.reorder(undefined, 0, 1), []);
+
+  // The originals are never touched.
+  const before = JSON.stringify(list);
+  M.reorder(list, 0, 3);
+  eq("the list handed in is unchanged", JSON.stringify(list), before);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

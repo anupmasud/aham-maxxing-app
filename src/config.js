@@ -11,7 +11,8 @@ export const CONFIG = {
        iosClientId  an "iOS" client whose bundle ID matches app.json
                     (com.anupmasud.ahammaxxing). The drive-starter iOS client
                     will NOT work here — Google ties an iOS client to one
-                    bundle ID, and this app has its own.
+                    bundle ID, and this app has its own, so it got its own
+                    client ("ahammaxxing ios") rather than borrowing that one.
        webClientId  a "Web application" client. The drive-starter one is
                     reusable as-is: GitHub Pages project sites all sit on
                     https://anupmasud.github.io, which is already an
@@ -19,7 +20,7 @@ export const CONFIG = {
   /* Must stay in step with `iosUrlScheme` in app.json, which is this same id
      reversed — the two are read by different halves of the sign-in and only
      one of them failing is the confusing case. */
-  iosClientId: "432206356046-0ujmkctdc5rb3hobfp0chjvt5kgt4849.apps.googleusercontent.com",
+  iosClientId: "432206356046-ltqo2ovf4cf1u229tg184qo3vrdvrf5o.apps.googleusercontent.com",
   webClientId: "432206356046-umf1ranbpqnttj4beulm9q79a1g6b5gf.apps.googleusercontent.com",
 
   /* drive.file is the narrowest useful scope: the app sees only files it made

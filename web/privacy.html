@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AhamMaxxing — Privacy</title>
+<style>
+  :root {
+    --paper: #FBF7F0; --card: #FFFFFF; --ink: #1F1A15; --ink2: #6B6055;
+    --ink3: #9A8E80; --rule: #E4DACB; --good: #3F7D5B; --accent: #2F6D8C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 80px; background: var(--paper); color: var(--ink);
+    font: 16px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: var(--ink2); margin: 0 0 4px; }
+  .date { color: var(--ink3); font-size: 13px; margin: 0 0 30px; }
+  h2 {
+    font-size: 17px; margin: 34px 0 10px; padding-top: 18px;
+    border-top: 1px solid var(--rule); letter-spacing: -0.01em;
+  }
+  p, li { color: var(--ink2); }
+  p { margin: 0 0 13px; }
+  ul { margin: 0 0 13px; padding-left: 22px; }
+  li { margin-bottom: 7px; }
+  strong { color: var(--ink); font-weight: 600; }
+  a { color: var(--accent); }
+  code {
+    font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 5px; padding: 1px 5px; color: var(--ink);
+  }
+  .lede {
+    background: var(--card); border: 1px solid var(--rule); border-left: 3px solid var(--good);
+    border-radius: 10px; padding: 16px 18px; margin: 0 0 8px;
+  }
+  .lede p { margin: 0; color: var(--ink); }
+  .lede p + p { margin-top: 9px; }
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--ink3); font-size: 13.5px; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Privacy</h1>
+  <p class="sub">AhamMaxxing — an app for setting targets and checking them off.</p>
+  <p class="date">Last updated 13 September 2026</p>
+
+  <div class="lede">
+    <p><strong>Everything you record is stored in your own Google Drive. The developer of this app cannot see it, and neither can anyone else you have not shown it to.</strong></p>
+    <p>There is no account to create, no server storing your data, and no analytics. The rest of this page explains exactly what happens and where, because a claim like that is only worth anything if it is checkable.</p>
+  </div>
+
+  <h2>What the app stores, and where</h2>
+  <p>Your categories, targets, daily entries and notes are written to a single spreadsheet in your own Google Drive, in a folder called <code>Apps / AhamMaxxing</code>. You own that file. You can open it, read it, edit it, chart it, or delete it, without the app's involvement.</p>
+  <p>Nothing is written anywhere else. There is no database behind this app and no server that holds a copy.</p>
+
+  <h2>What it keeps on your device</h2>
+  <ul>
+    <li><strong>A copy of your document</strong>, so the app can show your data instantly and while you are offline.</li>
+    <li><strong>Your sign-in token</strong> — in the system keychain on iPhone, in browser storage on the web. Never your password: the app never receives it.</li>
+    <li><strong>Small preferences</strong>, such as which screen the app opens on.</li>
+  </ul>
+  <p>Signing out removes the stored copy of your document and the sign-in token from that device.</p>
+
+  <h2>What it asks Google for</h2>
+  <p>One permission: <code>drive.file</code>. This lets an app see <strong>only the files it created itself</strong>. AhamMaxxing cannot read your other documents, photos, or spreadsheets — Google will not give them to it, whatever the app asks.</p>
+  <p>Signing in also gives the app your name, email address and profile picture, which are used to show who is signed in and to label the local copy of your data. They are not sent anywhere.</p>
+
+  <h2>What the developer receives</h2>
+  <p><strong>Nothing.</strong> No copy of your data, no usage statistics, no crash reports, no email list. The app contains no analytics and does not report anything about how you use it.</p>
+  <p>If you write to the developer for help, they will only know what you choose to tell them.</p>
+
+  <h2>Other companies necessarily involved</h2>
+  <ul>
+    <li><strong>Google</strong> stores your spreadsheet and handles signing in. Google's own <a href="https://policies.google.com/privacy">privacy policy</a> governs what Google does with it, as it would for any file in your Drive.</li>
+    <li><strong>GitHub</strong> hosts the web version's page files. Loading the page in a browser means GitHub receives an ordinary web request — your IP address and browser type — as any website would. Your habit data is not part of that request and never passes through GitHub.</li>
+    <li><strong>Apple</strong> distributes the iPhone app through TestFlight, and collects installation and crash information as it does for any app delivered that way.</li>
+  </ul>
+
+  <h2>Reminders</h2>
+  <p>The optional daily reminder is scheduled by your own phone. It is not a push notification: nothing about your day is sent to a server in order to deliver it, and no message travels over the network. Turning it on requires your permission, and you can withdraw that at any time in your phone's settings.</p>
+
+  <h2>Deleting your data</h2>
+  <ul>
+    <li><strong>Remove the data:</strong> delete the AhamMaxxing spreadsheet from your Google Drive. That is all of it.</li>
+    <li><strong>Cut off access:</strong> in the app, Setup → <em>Disconnect this app from Google</em>. This revokes the permission at Google's end and clears the local copy.</li>
+    <li><strong>Or from Google directly:</strong> <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+  </ul>
+  <p>There is nothing to request from the developer, because there is nothing held by the developer to return or erase.</p>
+
+  <h2>Children</h2>
+  <p>This app is not directed at children under 13 and is not designed or marketed for them.</p>
+
+  <h2>Changes to this page</h2>
+  <p>If what the app does with your data changes, this page changes with it, and the date at the top will say when.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about any of the above: <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a></p>
+
+  <footer>
+    AhamMaxxing is an independent personal project. Its source code is public at
+    <a href="https://github.com/anupmasud/aham-maxxing-app">github.com/anupmasud/aham-maxxing-app</a>,
+    so every claim on this page can be checked against the code that makes it.
+  </footer>
+
+</main>
+</body>
+</html>

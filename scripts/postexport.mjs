@@ -24,6 +24,18 @@ fs.writeFileSync(path.join(dist, ".nojekyll"), "");
 // 2. Icon for home-screen install.
 fs.copyFileSync(path.join(assets, "icon.png"), path.join(dist, "icon.png"));
 
+/* 2b. Static pages that are not part of the app bundle. The privacy policy
+   needs a stable public URL — Apple and Google both ask for one — and `expo
+   export` rewrites dist/ from scratch every build, so it is copied in from
+   web/ rather than left in dist/ to be deleted by the next build. */
+const staticDir = path.resolve("web");
+if (fs.existsSync(staticDir)) {
+  for (const file of fs.readdirSync(staticDir)) {
+    fs.copyFileSync(path.join(staticDir, file), path.join(dist, file));
+    console.log(`postexport: copied ${file}`);
+  }
+}
+
 // 3. Web app manifest, so it installs to a phone home screen like a real app.
 const manifest = {
   name: "AhamMaxxing",

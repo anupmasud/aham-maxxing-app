@@ -12,9 +12,12 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(dir, "..", "src", "ui", "kit.js"), "utf8");
 
 /* kit.js is a React module; only the pure link helpers are wanted here, so
-   they are lifted out rather than pulling react-native into a Node test. */
+   they are lifted out rather than pulling react-native into a Node test.
+
+   The end anchor is LinkText, the first thing below them that contains JSX —
+   it used to be Note, which broke the moment anything was added in between. */
 const grab = (start, end) => src.slice(src.indexOf(start), src.indexOf(end));
-const source = grab("const LINK_RE", "export function Note")
+const source = grab("const LINK_RE", "export function LinkText")
   .replace(/^export /gm, "")
   + "\nexport { LINK_RE, linkParts, isLink, linkLabel };";
 

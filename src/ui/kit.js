@@ -4,7 +4,10 @@
    ========================================================================== */
 
 import { useState } from "react";
-import { Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView,
+  StyleSheet, Text, View,
+} from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 export const C = {
@@ -340,43 +343,91 @@ export function linkLabel(url) {
   return trimmed.length > 42 ? `${trimmed.slice(0, 41)}…` : trimmed;
 }
 
+/* Text with its URLs turned into taps.
+
+   Lifted out of `Note` because day notes need exactly this and nothing else:
+   they were rendering as plain Text, so a YouTube link written against a
+   Tuesday workout was readable and completely dead. The note is where a link
+   is most worth having, which made it the one place links did not work. */
+export function LinkText({ text, style, numberOfLines }) {
+  const body = String(text || "");
+  if (!body.trim()) return null;
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {linkParts(body).map((part, i) => (isLink(part) ? (
+        <Text
+          key={i}
+          style={{ color: C.accent, textDecorationLine: "underline" }}
+          onPress={(e) => {
+            if (e && e.stopPropagation) e.stopPropagation();
+            Linking.openURL(part).catch(() => {});
+          }}
+        >
+          {linkLabel(part)}
+        </Text>
+      ) : part))}
+    </Text>
+  );
+}
+
+/* ----------------------------------------------------------------- sheet -- */
+
+/* A bottom sheet that gets out of the keyboard's way.
+
+   Every sheet in the app was a Modal pinned to the bottom of the screen with
+   the content laid straight into it. On a Mac that is fine. On a phone the
+   keyboard slides up over the bottom third and takes the text box with it —
+   you are typing a note you cannot see. KeyboardAvoidingView lifts the sheet
+   instead, and the ScrollView means a sheet taller than what is left of the
+   screen can still be reached rather than being clipped.
+
+   `keyboardShouldPersistTaps` matters as much as the rest: without it the
+   first tap on Save only dismisses the keyboard, so the button appears to do
+   nothing and the second tap lands somewhere else entirely. */
+export function Sheet({ onClose, children }) {
+  return (
+    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1, justifyContent: "flex-end" }}
+      >
+        {/* The backdrop takes whatever room the sheet does not, so a tap above
+            the sheet closes it — and it shrinks as the keyboard rises. */}
+        <Pressable
+          onPress={onClose}
+          style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)" }}
+        />
+        <View style={{
+          backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+          maxHeight: "86%",
+        }}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ padding: 18, paddingBottom: 26 }}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 export function Note({ text, full = false, style }) {
   const [open, setOpen] = useState(false);
   const body = String(text || "").trim();
   if (!body) return null;
 
   const shown = full || open;
-  const parts = linkParts(body);
-
-  /* A link has to be tappable, and a tap on the note itself opens and closes
-     it — so the link swallows its own press rather than letting it through and
-     collapsing the very thing you were reading. */
-  const rendered = parts.map((part, i) =>
-    isLink(part) ? (
-      <Text
-        key={i}
-        style={{ color: C.accent, textDecorationLine: "underline" }}
-        onPress={(e) => {
-          if (e && e.stopPropagation) e.stopPropagation();
-          Linking.openURL(part).catch(() => {});
-        }}
-      >
-        {linkLabel(part)}
-      </Text>
-    ) : (
-      part
-    )
-  );
 
   const inner = (
     <View style={[{ flexDirection: "row", gap: 7, marginTop: 5 }, style]}>
       <View style={{ width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.rule }} />
-      <Text
+      <LinkText
+        text={body}
         style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2 }}
         numberOfLines={shown ? undefined : 1}
-      >
-        {rendered}
-      </Text>
+      />
     </View>
   );
 

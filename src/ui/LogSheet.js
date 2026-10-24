@@ -11,9 +11,9 @@
    ========================================================================== */
 
 import { useEffect, useState } from "react";
-import { Modal, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
-import { C, S, Btn, Note } from "./kit";
+import { C, S, Btn, Note, Sheet } from "./kit";
 import * as M from "../model/targets";
 
 const fmtDay = (k) =>
@@ -72,18 +72,8 @@ export function LogSheet({ target, dayKey, log, note, onChangeNote, onChangeLog,
   };
 
   return (
-    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)", justifyContent: "flex-end" }}
-      >
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          style={{
-            backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18,
-            padding: 18, paddingBottom: 30,
-          }}
-        >
+    <Sheet onClose={onClose}>
+      <>
           <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{target.name}</Text>
           <Text style={[S.muted, { marginBottom: target.note ? 4 : 16 }]}>
             {fmtDay(dayKey)}{"  ·  "}{M.describe(target)}
@@ -159,8 +149,7 @@ export function LogSheet({ target, dayKey, log, note, onChangeNote, onChangeLog,
               </View>
             </>
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+      </>
+    </Sheet>
   );
 }

@@ -56,6 +56,17 @@ const doc = {
     { id: "b_2", from: "2026-10-01", to: "2026-10-30", kind: "away",
       count: true, note: "Camino" },
   ],
+  timers: [
+    { id: "w_1", name: "Upper body circuit", sets: 3, rounds: 4, work: 45,
+      rest: 15, setRest: 60, leadIn: 10, order: 0 },
+    { id: "w_2", name: "Tabata", sets: 1, rounds: 8, work: 20,
+      rest: 10, setRest: 0, leadIn: 5, order: 1 },
+  ],
+  tasks: [
+    { id: "k_1", day: "2026-09-16", name: "iMed colonoscopy", done: false, note: "9am, fasting", order: 0 },
+    { id: "k_2", day: "2026-09-16", name: "Ring the landlord", done: true, note: "", order: 1 },
+    { id: "k_3", day: "2026-09-02", name: "Collect parcel", done: false, note: "", order: 0 },
+  ],
   notes: {
     "2026-09-01": { t_str: 'Knee clicked on the third set. Dropped to 40kg, "fine after".' },
     "2026-09-02": { t_water: "Travelling, only had a bottle." },
@@ -70,8 +81,8 @@ const doc = {
 console.log("\n1. what the tabs look like");
 {
   const tabs = M.docToSheets(doc);
-  eq("eight tabs", Object.keys(tabs).sort(),
-     ["Away", "Categories", "Log", "Notes", "Plan", "Settings", "Targets", "Types"]);
+  eq("ten tabs", Object.keys(tabs).sort(),
+     ["Away", "Categories", "Log", "Notes", "Plan", "Settings", "Targets", "Tasks", "Timers", "Types"]);
   eq("targets carry the category by name", tabs.Targets[1][col("category")], "Movement");
   eq("restricted days written as names", tabs.Targets[3][col("days")], "Mon, Wed, Fri");
   eq("every day written as All", tabs.Targets[1][col("days")], "All");
@@ -412,6 +423,75 @@ console.log("\n12. time away survives the round trip");
 
   // A sheet written before the tab existed.
   eq("an older sheet has none", M.sheetsToDoc({ ...tabs, Away: [] }, doc).breaks, []);
+}
+
+console.log("\nT. one-off tasks");
+{
+  const tabs = M.docToSheets(doc);
+  eq("header", tabs.Tasks[0], ["id", "date", "task", "done", "note", "order"]);
+  // Sorted by date, so the tab reads as a diary rather than in entry order.
+  eq("earliest first", tabs.Tasks[1],
+     ["k_3", "2026-09-02", "Collect parcel", "FALSE", "", 0]);
+  eq("then the later day, in its own order", tabs.Tasks.slice(2).map((r) => r[0]), ["k_1", "k_2"]);
+  eq("done is written plainly", tabs.Tasks[3][3], "TRUE");
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("all three come back", back.tasks.map((t) => t.id), ["k_3", "k_1", "k_2"]);
+  eq("done survives", back.tasks.find((t) => t.id === "k_2").done, true);
+  eq("and the note", back.tasks.find((t) => t.id === "k_1").note, "9am, fasting");
+  eq("and the day", back.tasks.find((t) => t.id === "k_1").day, "2026-09-16");
+
+  // Typed straight into Sheets: a real date arrives as a serial number, and
+  // there is no id because a person would not invent one.
+  const byHand = { ...tabs, Tasks: [M.TASK_HEAD, ["", 46281, "Dentist", "yes", "", ""]] };
+  const one = M.sheetsToDoc(byHand, doc).tasks[0];
+  eq("a Sheets serial is read as a date", one.day, "2026-09-16");
+  eq("a missing id is replaced", one.id, "k_2026-09-16_0");
+  eq("\"yes\" counts as done", one.done, true);
+
+  // Rows that are not tasks are skipped rather than becoming ones.
+  const messy = { ...tabs, Tasks: [M.TASK_HEAD,
+    ["k_x", "", "No date", "", "", ""],
+    ["k_y", "2026-09-16", "", "", "", ""],
+    tabs.Tasks[1]] };
+  eq("no date and no name are both dropped",
+     M.sheetsToDoc(messy, doc).tasks.map((t) => t.id), ["k_3"]);
+
+  // A sheet written before the tab existed.
+  eq("an older sheet has none", M.sheetsToDoc({ ...tabs, Tasks: [] }, doc).tasks, []);
+}
+
+console.log("\nW. interval timers — the setup, never the use");
+{
+  const tabs = M.docToSheets(doc);
+  eq("header", tabs.Timers[0],
+     ["id", "name", "sets", "rounds", "workSeconds", "restSeconds", "setRestSeconds", "leadInSeconds", "order"]);
+  eq("the one from the request", tabs.Timers[1],
+     ["w_1", "Upper body circuit", 3, 4, 45, 15, 60, 10, 0]);
+  eq("and the other", tabs.Timers[2][1], "Tabata");
+
+  const back = M.sheetsToDoc(tabs, doc);
+  eq("both come back", back.timers.map((t) => t.id), ["w_1", "w_2"]);
+  eq("every field survives",
+     (({ sets, rounds, work, rest, setRest, leadIn }) => [sets, rounds, work, rest, setRest, leadIn])(back.timers[0]),
+     [3, 4, 45, 15, 60, 10]);
+  eq("a zero is kept as a zero, not defaulted", back.timers[1].setRest, 0);
+
+  // Typed in by hand: a name and some numbers, no id.
+  const byHand = { ...tabs, Timers: [M.TIMER_HEAD, ["", "Quick", "2", "3", "30", "", "", "", ""]] };
+  const one = M.sheetsToDoc(byHand, doc).timers[0];
+  eq("an id is invented", one.id, "w_0");
+  eq("numbers read from text", [one.sets, one.rounds, one.work], [2, 3, 30]);
+  eq("blank cells fall back to defaults", [one.rest, one.setRest, one.leadIn], [15, 60, 10]);
+
+  // A row with no name is not a timer.
+  const messy = { ...tabs, Timers: [M.TIMER_HEAD, ["w_x", "", "1", "1", "1", "", "", "", ""], tabs.Timers[1]] };
+  eq("nameless rows are skipped", M.sheetsToDoc(messy, doc).timers.map((t) => t.id), ["w_1"]);
+
+  eq("an older sheet has none", M.sheetsToDoc({ ...tabs, Timers: [] }, doc).timers, []);
+
+  // Nothing about running one is ever written.
+  eq("no tab mentions a run", Object.keys(tabs).some((k) => /run|session|history/i.test(k)), false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

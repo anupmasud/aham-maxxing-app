@@ -1,5 +1,5 @@
 /* ==========================================================================
-   The document as six tabs of a spreadsheet, and back.
+   The document as the tabs of a spreadsheet, and back.
 
    Pure functions, no network — which is what lets the round trip be tested
    properly, because this is the layer where data gets lost if anything is
@@ -13,6 +13,8 @@
      Plan        one row per date-specific decision, including the noes
      Notes       one row per day you wrote something about a target
      Away        one row per stretch the app should ask nothing of you
+     Tasks       one row per one-off task, on the day it is meant for
+     Timers      one row per interval timer — the setup, never the use
      Settings    one row per setting
 
    Two principles throughout:
@@ -30,7 +32,8 @@ import { ALL_DAYS, DOW, isDateKey, round2 } from "./targets";
 
 export const TABS = {
   CATS: "Categories", TARGETS: "Targets", TYPES: "Types",
-  LOG: "Log", PLAN: "Plan", NOTES: "Notes", BREAKS: "Away", SETTINGS: "Settings",
+  LOG: "Log", PLAN: "Plan", NOTES: "Notes", BREAKS: "Away", TASKS: "Tasks", TIMERS: "Timers",
+  SETTINGS: "Settings",
 };
 
 const norm = (v) => String(v == null ? "" : v).trim();
@@ -114,6 +117,15 @@ export const SETTINGS_HEAD = ["setting", "value"];
 export const PLAN_HEAD = ["date", "target", "targetId", "planned", "kinds"];
 export const NOTE_HEAD = ["date", "target", "targetId", "note"];
 export const BREAK_HEAD = ["id", "from", "to", "kind", "counts", "note"];
+/* One-off tasks. `date` is the day it is meant for; `done` is the whole of its
+   state. Nothing here is scored, so there is no goal, no unit and no plan. */
+export const TASK_HEAD = ["id", "date", "task", "done", "note", "order"];
+/* An interval timer's definition. Seconds throughout, because a spreadsheet
+   column of "45" is obvious and one of "0:00:45" is a date waiting to happen.
+   Nothing about *running* one is written here — that was the point of it. */
+export const TIMER_HEAD = ["id", "name", "sets", "rounds",
+                           "workSeconds", "restSeconds", "setRestSeconds", "leadInSeconds",
+                           "order"];
 
 /* ------------------------------------------------------------------ out -- */
 
@@ -260,6 +272,31 @@ export function notesOut(doc) {
 
 /* Stretches of time the app asks nothing of. One row each, most recent first,
    so the tab reads as a list of trips and illnesses rather than a log. */
+/* Sorted by date then position, so the tab reads as a diary rather than in
+   whatever order things happened to be typed. */
+export function tasksOut(doc) {
+  const rows = [TASK_HEAD];
+  (doc.tasks || [])
+    .filter((t) => t && isDateKey(t.day))
+    .slice()
+    .sort((a, b) => a.day.localeCompare(b.day) || (a.order - b.order))
+    .forEach((t) => {
+      rows.push([t.id, t.day, t.name || "", t.done ? "TRUE" : "FALSE", t.note || "", t.order]);
+    });
+  return rows;
+}
+
+export function timersOut(doc) {
+  const rows = [TIMER_HEAD];
+  (doc.timers || [])
+    .slice().sort((a, b) => (a.order - b.order))
+    .forEach((t) => {
+      rows.push([t.id, t.name || "Timer", t.sets, t.rounds,
+                 t.work, t.rest, t.setRest, t.leadIn, t.order]);
+    });
+  return rows;
+}
+
 export function breaksOut(doc) {
   const rows = [BREAK_HEAD];
   (doc.breaks || []).forEach((b) => {
@@ -277,6 +314,8 @@ export const docToSheets = (doc) => ({
   [TABS.PLAN]: planOut(doc),
   [TABS.NOTES]: notesOut(doc),
   [TABS.BREAKS]: breaksOut(doc),
+  [TABS.TASKS]: tasksOut(doc),
+  [TABS.TIMERS]: timersOut(doc),
   [TABS.SETTINGS]: settingsOut(doc),
 });
 
@@ -461,6 +500,56 @@ export function sheetsToDoc(tabs, base = {}) {
     });
   });
 
+  /* A task needs a date and something to call it; a row with neither is an
+     empty line rather than a task. The id is regenerated from the date when
+     missing, so a row typed straight into the spreadsheet still round-trips. */
+  /* anyRows, not rows: somebody adding a task straight into the spreadsheet
+     types a date and a name and leaves the id column alone, and `rows` drops
+     anything whose first cell is empty — which is exactly that row. */
+  const tsk = reader(head(TABS.TASKS), TASK_HEAD);
+  const tasks = [];
+  anyRows(TABS.TASKS).forEach((r, i) => {
+    // Same reader as an end date: a person typing into the spreadsheet gets a
+    // real Sheets date, which arrives as a serial number rather than a string.
+    const day = untilIn(tsk(r, "date"));
+    const name = norm(tsk(r, "task"));
+    if (!isDateKey(day) || !name) return;
+    tasks.push({
+      id: norm(tsk(r, "id")) || `k_${day}_${i}`,
+      day,
+      name,
+      done: bool(tsk(r, "done")),
+      note: norm(tsk(r, "note")),
+      order: num(tsk(r, "order"), i),
+    });
+  });
+
+  /* Timers are read loosely and clamped by the model, not here: a row typed
+     by hand with "0" rounds is a mistake to be corrected on the way in, and
+     the rules for that live in one place beside the schedule they protect. */
+  const tmr = reader(head(TABS.TIMERS), TIMER_HEAD);
+  /* An empty cell means "not specified", not zero. The app always writes a
+     number — a zero rest is written as 0 — so a blank can only come from a
+     row somebody typed, where falling back to the default is kinder than
+     silently building a timer with no rests at all. */
+  const tnum = (r, key, fallback) => (norm(tmr(r, key)) === "" ? fallback : num(tmr(r, key), fallback));
+  const timers = [];
+  anyRows(TABS.TIMERS).forEach((r, i) => {
+    const name = norm(tmr(r, "name"));
+    if (!name) return;
+    timers.push({
+      id: norm(tmr(r, "id")) || `w_${i}`,
+      name,
+      sets: tnum(r, "sets", 3),
+      rounds: tnum(r, "rounds", 4),
+      work: tnum(r, "workSeconds", 45),
+      rest: tnum(r, "restSeconds", 15),
+      setRest: tnum(r, "setRestSeconds", 60),
+      leadIn: tnum(r, "leadInSeconds", 10),
+      order: num(tmr(r, "order"), i),
+    });
+  });
+
   /* Settings read from the sheet win; whatever was in memory is only a
      fallback for a document written before this tab existed. */
   const setting = {};
@@ -473,6 +562,8 @@ export function sheetsToDoc(tabs, base = {}) {
     version: 1,
     notes,
     breaks,
+    tasks,
+    timers,
     createdAt: pick("createdAt", base.createdAt || new Date().toISOString()),
     template: pick("template", base.template || "default"),
     homeTab: pick("opensOn", base.homeTab || "insights") === "today" ? "today" : "insights",

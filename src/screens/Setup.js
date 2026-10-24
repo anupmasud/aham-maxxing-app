@@ -1150,7 +1150,9 @@ function ClearHistory({ doc, update, confirm }) {
   const found = M.historyBefore(doc, cut);
 
   const logged = Object.keys(doc.log || {}).filter(M.isDateKey).sort();
-  if (!logged.length) return null;
+  // Tasks count as history too, so a document with tasks and nothing logged
+  // still has something to clear.
+  if (!logged.length && !(doc.tasks || []).length) return null;
 
   const pretty = (k) =>
     M.parseKey(k).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
@@ -1159,6 +1161,7 @@ function ClearHistory({ doc, update, confirm }) {
     found.entries ? `${found.entries} entr${found.entries === 1 ? "y" : "ies"}` : "",
     found.notes ? `${found.notes} note${found.notes === 1 ? "" : "s"}` : "",
     found.plans ? `${found.plans} planned day${found.plans === 1 ? "" : "s"}` : "",
+    found.tasks ? `${found.tasks} task${found.tasks === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
 
   return (

@@ -44,6 +44,8 @@ export function docFromTemplate(templateId) {
     categories,
     targets,
     log: {},
+    tasks: [],
+    timers: [],
     reminders: { enabled: false, hour: 20, minute: 0 },
   };
 }
@@ -83,6 +85,6 @@ export const seededDoc = () => docFromTemplate("health");
 export const emptyDoc = () => ({
   version: 1,
   createdAt: new Date().toISOString(),
-  categories: [], targets: [], log: {},
+  categories: [], targets: [], log: {}, tasks: [], timers: [],
   reminders: { enabled: false, hour: 20, minute: 0 },
 });

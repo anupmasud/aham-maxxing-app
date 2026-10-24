@@ -3,10 +3,16 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { Arrow, C, S, Bar, Btn, CatHeader, Note, Ring, Seg, Stepper, Tick } from "../ui/kit";
+import {
+  Arrow, C, S, Bar, Btn, CatHeader, LinkText, Note, Ring, Seg, Sheet, Stepper, Tick,
+} from "../ui/kit";
 import { LogSheet } from "../ui/LogSheet";
 import { GROUP_MODES, groupTargets } from "../model/grouping";
 import { Reorderable } from "../ui/Reorder";
+import { TaskCard, TaskSheet } from "../ui/TaskCard";
+import { TimerCard, TimerRunner, TimerSheet } from "../ui/Timers";
+import * as K from "../model/tasks";
+import * as W from "../model/timers";
 import * as M from "../model/targets";
 
 /* The model names a tone; the palette stays here. */
@@ -19,6 +25,9 @@ export default function Today({ doc, update, day, setDay }) {
   const [editing, setEditing] = useState(null);   // { target, dayKey }
   const [planning, setPlanning] = useState(null); // { target, dayKey }
   const [noting, setNoting] = useState(null);     // { target, dayKey }
+  const [task, setTask] = useState(null);         // the one-off task being edited
+  const [editTimer, setEditTimer] = useState(null);   // timer being set up
+  const [runTimer, setRunTimer] = useState(null);     // timer currently running
 
   /* The same lens Setup offers, over the same targets. Kept per screen rather
      than shared: organising is a job you do by area, and getting through the
@@ -41,6 +50,14 @@ export default function Today({ doc, update, day, setDay }) {
   const score = M.dayScore(day, targets, log, breaks);
 
   const setLog = (fn) => update((d) => ({ ...d, log: fn(d.log || {}) }));
+
+  /* Tasks live beside targets in the document rather than among them, so
+     nothing here can reach a score. See src/model/tasks.js. */
+  const setTasks = (fn) => update((d) => ({ ...d, tasks: fn(d.tasks || []) }));
+
+  /* Timers are a utility: the definition is saved, running one writes
+     nothing. See src/model/timers.js. */
+  const setTimers = (fn) => update((d) => ({ ...d, timers: fn(d.timers || []) }));
   const writeNote = (target, dayKey, text) =>
     update((d) => ({ ...d, notes: M.setDayNote(d.notes || {}, target.id, dayKey, text) }));
 
@@ -256,6 +273,52 @@ export default function Today({ doc, update, day, setDay }) {
       }}
       </Reorderable>
 
+      {/* One more heading at the end of the list, and the only one that is not
+          a category — a task is a one-off, and none of this is counted. */}
+      <TaskCard
+        tasks={doc.tasks || []}
+        day={day}
+        arranging={arranging}
+        onAdd={(name) => setTasks((list) => K.addTask(list, { day, name }))}
+        onToggle={(id) => setTasks((list) => K.toggleTask(list, id))}
+        onOpen={setTask}
+        onReorder={(from, to) => setTasks((list) => K.reorderTasksOn(list, day, from, to))}
+        onPush={(t) => setTasks((list) =>
+          K.moveTaskToDay(list, t.id, M.keyOf(M.addDays(M.parseKey(K.dayOf(t)), 1))))}
+      />
+
+      {/* A utility rather than a category — no goal, no score, and using it
+          leaves no trace. */}
+      <TimerCard
+        timers={doc.timers || []}
+        onRun={setRunTimer}
+        onEdit={setEditTimer}
+        onAdd={() => {
+          const made = W.makeTimer({ name: "New timer" });
+          setTimers((list) => [...W.timerList(list), { ...made, order: W.timerList(list).length }]);
+          setEditTimer(made);
+        }}
+      />
+
+      <TimerSheet
+        timer={editTimer}
+        onSave={(next) => setTimers((list) => W.saveTimer(list, editTimer.id, next))}
+        onDelete={() => setTimers((list) => W.removeTimer(list, editTimer.id))}
+        onClose={() => setEditTimer(null)}
+      />
+
+      <TimerRunner timer={runTimer} onClose={() => setRunTimer(null)} />
+
+      <TaskSheet
+        task={task}
+        day={day}
+        onSave={({ name, note }) => setTasks((list) =>
+          K.setTaskNote(K.renameTask(list, task.id, name), task.id, note))}
+        onMove={(to) => setTasks((list) => K.moveTaskToDay(list, task.id, to))}
+        onDelete={() => setTasks((list) => K.removeTask(list, task.id))}
+        onClose={() => setTask(null)}
+      />
+
       <PlanSheet
         state={planning}
         doc={doc}
@@ -276,7 +339,9 @@ export default function Today({ doc, update, day, setDay }) {
       <DayNoteSheet
         state={noting}
         note={noting ? M.dayNote(notes, noting.target.id, noting.dayKey) : ""}
+        notes={notes}
         onSave={(text) => writeNote(noting.target, noting.dayKey, text)}
+        onJump={setDay}
         onClose={() => setNoting(null)}
       />
     </ScrollView>
@@ -363,20 +428,17 @@ function DayNote({ text, onPress }) {
     <Pressable onPress={onPress} hitSlop={4}>
       <View style={{ flexDirection: "row", gap: 7, marginTop: 5 }}>
         <View style={{ width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.accent }} />
-        <Text style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2, fontStyle: "italic" }}>
-          {text}
-        </Text>
+        {/* LinkText, not Text: a note is where the workout link lives, and a
+            link you cannot tap is just a long piece of grey. */}
+        <LinkText
+          text={text}
+          style={{ flex: 1, fontSize: 12, lineHeight: 17, color: C.ink2, fontStyle: "italic" }}
+        />
       </View>
     </Pressable>
   );
 }
 
-/* Quiet until it has something in it. A row with nothing written on it should
-   not be shouting about the possibility.
-
-   A pencil rather than a plus: an amount row already has a stepper whose "+"
-   sits directly beside this, and two plus signs in a row is a question about
-   which one adds what. */
 function NoteButton({ on, onPress }) {
   return (
     <Pressable onPress={onPress} hitSlop={8}
@@ -395,7 +457,7 @@ function NoteButton({ on, onPress }) {
 /* Writing about one target on one day. Deliberately its own sheet rather than
    part of logging: most of these are written on days the thing did not happen,
    which is exactly when there is no number to type. */
-function DayNoteSheet({ state, note, onSave, onClose }) {
+function DayNoteSheet({ state, note, notes, onSave, onClose, onJump }) {
   const [text, setText] = useState("");
   const [seeded, setSeeded] = useState(null);
   const key = state ? `${state.target.id}:${state.dayKey}` : null;
@@ -405,50 +467,66 @@ function DayNoteSheet({ state, note, onSave, onClose }) {
 
   const save = () => { onSave(text); onClose(); };
 
+  /* Everything written about this target before, minus the day being edited —
+     which is in the box above and does not need saying twice. */
+  const earlier = M.targetNotes(notes, state.target.id).filter((n) => n.day !== state.dayKey);
+
   return (
-    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
-      <Pressable onPress={onClose}
-        style={{ flex: 1, backgroundColor: "rgba(20,16,12,0.44)", justifyContent: "flex-end" }}>
-        <Pressable onPress={(e) => e.stopPropagation()}
-          style={{
-            backgroundColor: C.paper, borderTopLeftRadius: 18, borderTopRightRadius: 18,
-            padding: 18, paddingBottom: 30,
-          }}>
-          <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{state.target.name}</Text>
-          <Text style={[S.muted, { marginBottom: 14 }]}>
-            {M.parseKey(state.dayKey).toLocaleDateString(undefined,
-              { weekday: "long", day: "numeric", month: "long" })}
+    <Sheet onClose={onClose}>
+      <Text style={[S.h1, { fontSize: 20, marginBottom: 3 }]}>{state.target.name}</Text>
+      <Text style={[S.muted, { marginBottom: 14 }]}>
+        {M.parseKey(state.dayKey).toLocaleDateString(undefined,
+          { weekday: "long", day: "numeric", month: "long" })}
+      </Text>
+
+      {/* The standing note, if there is one, so you can write against it. */}
+      <Note text={state.target.note} full style={{ marginTop: 0, marginBottom: 14 }} />
+
+      <Text style={S.label}>How did it go?</Text>
+      <TextInput
+        style={[S.input, { minHeight: 110, textAlignVertical: "top" }]}
+        multiline
+        autoFocus
+        value={text}
+        onChangeText={setText}
+        placeholder="Anything worth remembering about today — how it felt, what you changed, why you skipped it."
+        placeholderTextColor={C.ink3}
+      />
+      <Text style={[S.tiny, { marginTop: 5 }]}>
+        Kept against this day only. Clear the box to remove it.
+      </Text>
+
+      <View style={[S.row, { gap: 9, marginTop: 14 }]}>
+        <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
+        <Btn primary label="Save" onPress={save} style={{ flex: 1 }} />
+      </View>
+
+      {/* ---- what you wrote before ---- */}
+      {earlier.length > 0 && (
+        <View style={{ marginTop: 22 }}>
+          <Text style={[S.label, { marginBottom: 8 }]}>
+            EARLIER NOTES · {earlier.length}
           </Text>
-
-          {/* The standing note, if there is one, so you can write against it. */}
-          <Note text={state.target.note} full style={{ marginTop: 0, marginBottom: 14 }} />
-
-          <Text style={S.label}>How did it go?</Text>
-          <TextInput
-            style={[S.input, { minHeight: 110, textAlignVertical: "top" }]}
-            multiline
-            autoFocus
-            value={text}
-            onChangeText={setText}
-            placeholder="Anything worth remembering about today — how it felt, what you changed, why you skipped it."
-          />
-          <Text style={[S.tiny, { marginTop: 5 }]}>
-            Kept against this day only. Clear the box to remove it.
-          </Text>
-
-          <View style={[S.row, { gap: 9, marginTop: 14 }]}>
-            <Btn label="Cancel" onPress={onClose} style={{ flex: 1 }} />
-            <Btn primary label="Save" onPress={save} style={{ flex: 1 }} />
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          {earlier.map((n) => (
+            <View key={n.day} style={{ marginBottom: 12 }}>
+              <Pressable onPress={() => { onJump(n.day); onClose(); }} hitSlop={4}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: C.accent }}>
+                  {M.parseKey(n.day).toLocaleDateString(undefined,
+                    { weekday: "short", day: "numeric", month: "short" })}
+                </Text>
+              </Pressable>
+              <LinkText
+                text={n.text}
+                style={{ fontSize: 13, lineHeight: 19, color: C.ink2, marginTop: 2 }}
+              />
+            </View>
+          ))}
+        </View>
+      )}
+    </Sheet>
   );
 }
 
-/* A day that has not happened yet. It shows what the plan asked for and
-   nothing else — no circle to tap, because recording a session before it has
-   happened would put work into the week's totals that nobody has done. */
 function PlannedRow({ t, day, plans, badge, grip, onPress }) {
   const p = M.planFor(t, day, plans);
 

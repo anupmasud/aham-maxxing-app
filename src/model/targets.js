@@ -665,6 +665,17 @@ export function noteDays(notes, targetId) {
 
 /* Notes belonging to targets that no longer exist, dropped. Deleting a target
    already takes its history; its notes should not outlive it. */
+/* Every day this target was written about, newest first.
+
+   The notes were always being saved — they are rows in the Notes tab of the
+   spreadsheet — but the only place one was ever shown was the day it belonged
+   to. So a link to the five-minute arms video, written against a Sunday, was
+   unreachable by Monday without opening Drive. This is the list that makes a
+   note worth writing more than once. */
+export function targetNotes(notes, targetId) {
+  return noteDays(notes, targetId).map((day) => ({ day, text: dayNote(notes, targetId, day) }));
+}
+
 export function pruneNotes(notes, targets) {
   const live = new Set((targets || []).map((t) => t.id));
   const out = {};
@@ -693,14 +704,22 @@ export function pruneNotes(notes, targets) {
 /* What clearing would take, so the question can be asked with numbers in it
    rather than "are you sure". */
 export function historyBefore(doc, dayKey) {
-  if (!isDateKey(dayKey)) return { days: 0, entries: 0, notes: 0, plans: 0, first: null, last: null };
+  if (!isDateKey(dayKey)) {
+    return { days: 0, entries: 0, notes: 0, plans: 0, tasks: 0, first: null, last: null };
+  }
 
   const upTo = (map) => Object.keys(map || {}).filter((d) => isDateKey(d) && d <= dayKey);
   const count = (map) =>
     upTo(map).reduce((n, d) => n + Object.keys(map[d] || {}).length, 0);
 
+  /* Tasks are filtered here rather than in the tasks module, so the boundary
+     — before *and including* this date — is defined once. Two modules each
+     deciding what "before" means is how a clear leaves a straggler behind. */
+  const staleTasks = (doc.tasks || []).filter((t) => t && isDateKey(t.day) && t.day <= dayKey);
+
   const days = [...new Set([
     ...upTo(doc.log), ...upTo(doc.notes), ...upTo(doc.plans),
+    ...staleTasks.map((t) => t.day),
   ])].sort();
 
   return {
@@ -708,6 +727,7 @@ export function historyBefore(doc, dayKey) {
     entries: count(doc.log),
     notes: count(doc.notes),
     plans: count(doc.plans),
+    tasks: staleTasks.length,
     first: days[0] || null,
     last: days[days.length - 1] || null,
   };
@@ -733,6 +753,7 @@ export function clearHistoryBefore(doc, dayKey) {
     log: keep(doc.log),
     notes: keep(doc.notes),
     plans: keep(doc.plans),
+    tasks: (doc.tasks || []).filter((t) => !(t && isDateKey(t.day) && t.day <= dayKey)),
   };
 }
 

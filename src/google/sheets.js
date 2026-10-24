@@ -35,6 +35,7 @@ const TITLE = CONFIG.sheetName || "AhamMaxxing";
    renamed rather than abandoned with a second one created beside it. */
 const OLD_TITLE = CONFIG.fileName.replace(/\.json$/i, "");
 const ORDER = [TABS.CATS, TABS.TARGETS, TABS.TYPES, TABS.LOG, TABS.PLAN, TABS.NOTES,
+               TABS.TASKS, TABS.TIMERS,
                TABS.BREAKS, TABS.SETTINGS];
 
 /* Every call goes through here so the stale-token retry lives in one place. */

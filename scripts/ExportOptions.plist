@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Options for `xcodebuild -exportArchive` when sending a build to App Store
+  Connect. Kept in the repository rather than in a scratch directory because a
+  temporary one gets cleaned between sessions, and its absence fails the export
+  with a message about the plist rather than about the build.
+
+  The team id is not a secret: it says which Apple account signs the build.
+  Signing still needs the private key in the keychain, which is not here.
+-->
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>teamID</key>
+  <string>SFXV897A5H</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+  <key>uploadSymbols</key>
+  <true/>
+  <key>destination</key>
+  <string>export</string>
+</dict>
+</plist>

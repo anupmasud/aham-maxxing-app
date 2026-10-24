@@ -21,7 +21,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "build:web": "expo export --platform web && node scripts/postexport.mjs",
-    "deploy:web": "npm run build:web && bash scripts/deploy-web.sh"
+    "deploy:web": "npm run build:web && bash scripts/deploy-web.sh",
+    "build:ios": "npx --yes eas-cli@latest build --platform ios --profile production",
+    "submit:ios": "npx --yes eas-cli@latest submit --platform ios --latest"
   },
   "private": true
 }

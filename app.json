@@ -8,7 +8,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anupmasud.ahammaxxing"
+      "bundleIdentifier": "com.anupmasud.ahammaxxing",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "buildNumber": "7"
     },
     "android": {
       "adaptiveIcon": {

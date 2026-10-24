@@ -409,6 +409,25 @@ function Spark({ series, goal }) {
   );
 }
 
+/* How one square of the heatmap is painted.
+
+   Pulled out of the component and exported because it is where the screen
+   used to crash. A day inside a break has no score — nothing was asked of
+   you, so there is nothing to score — and the old code read `.due` off that
+   missing score for every such day. One holiday inside the chosen range and
+   Insights went white.
+
+   Away days are faded rather than left blank. Blank is what a day you simply
+   did nothing looks like, and the whole point of a break is that those two
+   are not the same thing. */
+export function heatCell({ outside, away, score, broken }) {
+  if (outside || away) return { bg: C.ruleSoft, opacity: 0.3 };
+  if (!score || !score.due) return { bg: C.ruleSoft, opacity: 1 };
+  return broken
+    ? { bg: C.over, opacity: 0.35 + score.pct * 0.6 }
+    : { bg: C.good, opacity: 0.15 + score.pct * 0.85 };
+}
+
 function Heat({ keys, targets, log, breaks }) {
   const first = M.startOfWeek(M.parseKey(keys[0]));
   const last = M.startOfWeek(M.parseKey(keys[keys.length - 1]));
@@ -423,14 +442,9 @@ function Heat({ keys, targets, log, breaks }) {
         {M.weekKeys(monday).map((k) => {
           const outside = M.isFuture(k) || M.daysBetween(keys[0], k) < 0;
           const away = M.suspendedOn(breaks, k);
-          const s = outside || away ? null : M.dayScore(k, targets, log, breaks);
+          const score = outside || away ? null : M.dayScore(k, targets, log, breaks);
           const broken = !outside && !away && M.dayLimitsBroken(k, targets, log, breaks);
-          let bg = C.ruleSoft, opacity = 1;
-          if (outside) opacity = 0.3;
-          else if (s.due) {
-            bg = broken ? C.over : C.good;
-            opacity = broken ? 0.35 + s.pct * 0.6 : 0.15 + s.pct * 0.85;
-          }
+          const { bg, opacity } = heatCell({ outside, away, score, broken });
           return <View key={k} style={{ width: 13, height: 13, borderRadius: 3, backgroundColor: bg, opacity }} />;
         })}
       </View>

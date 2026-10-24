@@ -11,6 +11,7 @@
    ========================================================================== */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { CONFIG, isAllowed } from "../config";
@@ -18,6 +19,7 @@ import * as Auth from "../google/auth";
 import * as Drive from "../google/drive";
 import { exportCsv } from "../model/csv";
 import * as Sheets from "../google/sheets";
+import { decideOnLoad, envelope, readEnvelope, retryDelay, sameDoc } from "../model/sync";
 
 const SAVE_DELAY = 1200;
 const cacheKey = (email) => `ahammaxxing:doc:${email || "anon"}`;
@@ -36,18 +38,42 @@ export function useCloudDoc() {
   const baseTime = useRef(null);     // modifiedTime this device last saw
   const timer = useRef(null);
   const latest = useRef(null);       // newest doc, even mid-render
+  const dirty = useRef(false);       // holds work Drive has not got
+  const since = useRef(null);        // when the oldest unsent change was made
+  const attempt = useRef(0);         // consecutive failed pushes, for backoff
+  const retry = useRef(null);
+  /* `load` needs to push, and `push` is defined below it. A ref keeps the two
+     out of each other's dependency lists without reordering the file. */
+  const pushRef = useRef(null);
+  const [pending, setPending] = useState(null);   // { since } while unsent
 
   /* ------------------------------------------------------------- helpers -- */
 
-  const cache = useCallback(async (email, value) => {
-    try { await AsyncStorage.setItem(cacheKey(email), JSON.stringify(value)); } catch (_) {}
+  /* The cache is written with the document, whether Drive has it yet, and the
+     Drive timestamp this device last agreed with. All three are needed after
+     the app has been closed: without the flag, work done offline is
+     indistinguishable from a stale copy, and the next load overwrites it. */
+  const cache = useCallback(async (email, value, { dirty: d = false, base = null } = {}) => {
+    try {
+      await AsyncStorage.setItem(
+        cacheKey(email),
+        JSON.stringify(envelope(value, { dirty: d, base, at: since.current })),
+      );
+    } catch (_) {}
   }, []);
 
   const readCache = useCallback(async (email) => {
     try {
       const raw = await AsyncStorage.getItem(cacheKey(email));
-      return raw ? JSON.parse(raw) : null;
+      return raw ? readEnvelope(JSON.parse(raw)) : null;
     } catch (_) { return null; }
+  }, []);
+
+  const markPending = useCallback((on) => {
+    dirty.current = on;
+    if (on && !since.current) since.current = new Date().toISOString();
+    if (!on) { since.current = null; attempt.current = 0; }
+    setPending(on ? { since: since.current } : null);
   }, []);
 
   /* --------------------------------------------------------------- load -- */
@@ -56,8 +82,13 @@ export function useCloudDoc() {
     if (!isAllowed(u.email)) { setStatus("not-allowed"); return; }
 
     // Paint from cache first so there is no blank screen while Drive answers.
-    const cached = await readCache(u.email);
+    const held = await readCache(u.email);
+    const cached = held ? held.doc : null;
     if (cached) { setDoc(cached); latest.current = cached; }
+    if (held && held.dirty) {
+      since.current = held.at || new Date().toISOString();
+      markPending(true);
+    }
     setStatus(cached ? "ready" : "loading");
 
     try {
@@ -81,13 +112,63 @@ export function useCloudDoc() {
         doc = (await Drive.readJsonIfExists()) || cached || CONFIG.emptyDoc(template);
         const saved = await Sheets.saveDoc(id, doc, null, { force: true });
         baseTime.current = saved.modifiedTime;
-      } else {
-        baseTime.current = modifiedTime;
+        setDoc(doc);
+        latest.current = doc;
+        markPending(false);
+        await cache(u.email, doc, { base: baseTime.current });
+        setStatus("ready");
+        setError("");
+        return;
       }
 
+      /* The sheet exists, and this device may be holding entries it never
+         managed to send. Taking Drive's copy here is what used to lose a day
+         logged on a plane, so the decision is made explicitly. */
+      const verdict = decideOnLoad({
+        hasCache: !!cached,
+        dirty: !!(held && held.dirty),
+        base: held ? held.base : null,
+        remoteTime: modifiedTime,
+      });
+
+      if (verdict.use === "local" && verdict.action === "conflict") {
+        /* The timestamps disagree, but that is only ever a hint. If the two
+           copies hold the same thing there is nothing to choose between them
+           — so take the new timestamp, drop the unsent flag, and say nothing.
+           Asking someone to pick between two identical documents is the most
+           annoying possible way to be careful. */
+        if (sameDoc(cached, remote)) {
+          baseTime.current = modifiedTime;
+          markPending(false);
+          await cache(u.email, remote, { base: modifiedTime });
+          setDoc(remote);
+          latest.current = remote;
+          setStatus("ready");
+          setError("");
+          return;
+        }
+        baseTime.current = modifiedTime;
+        setConflict({ mine: cached, theirs: remote });
+        setStatus("conflict");
+        return;
+      }
+
+      if (verdict.use === "local") {
+        // Ahead of Drive and nobody else has touched it — send it up.
+        baseTime.current = modifiedTime;
+        setDoc(cached);
+        latest.current = cached;
+        setStatus("ready");
+        setError("");
+        if (pushRef.current) await pushRef.current();
+        return;
+      }
+
+      baseTime.current = modifiedTime;
       setDoc(doc);
       latest.current = doc;
-      await cache(u.email, doc);
+      markPending(false);
+      await cache(u.email, doc, { base: baseTime.current });
       setStatus("ready");
       setError("");
     } catch (e) {
@@ -101,7 +182,7 @@ export function useCloudDoc() {
         : cached ? "offline" : "error"
       );
     }
-  }, [cache, readCache]);
+  }, [cache, readCache, markPending]);
 
   /* --------------------------------------------------------------- boot -- */
 
@@ -121,10 +202,13 @@ export function useCloudDoc() {
 
   const push = useCallback(async () => {
     if (!fileId.current || !latest.current || !user) return;
+    clearTimeout(retry.current);
     setStatus("saving");
     try {
       const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, baseTime.current);
       baseTime.current = modifiedTime;
+      markPending(false);
+      await cache(user.email, latest.current, { base: modifiedTime });
       setStatus("ready");
       setError("");
     } catch (e) {
@@ -132,7 +216,21 @@ export function useCloudDoc() {
         // Fetch the other side so the user can actually compare, rather than
         // being asked to choose blind.
         try {
-          const { doc: theirs } = await Sheets.loadDoc({ email: user?.email });
+          const { doc: theirs, modifiedTime } = await Sheets.loadDoc({ email: user?.email });
+
+          /* Drive's modification time moves on its own — it settles after a
+             write, and adding a tab bumps it — so "changed elsewhere" is
+             regularly a false alarm. Only a real difference in content is
+             worth stopping for; otherwise adopt the newer timestamp and let
+             the save go through next time. */
+          if (sameDoc(latest.current, theirs)) {
+            baseTime.current = modifiedTime;
+            markPending(false);
+            await cache(user.email, latest.current, { base: modifiedTime });
+            setStatus("ready");
+            setError("");
+            return;
+          }
           setConflict({ mine: latest.current, theirs });
         } catch (_) {
           setConflict({ mine: latest.current, theirs: null });
@@ -141,20 +239,36 @@ export function useCloudDoc() {
         return;
       }
       setError(e.message);
-      setStatus(e.needsScope ? "needs-permission" : e.needsSignIn ? "expired" : "offline");
+      const next = e.needsScope ? "needs-permission" : e.needsSignIn ? "expired" : "offline";
+      setStatus(next);
+
+      /* Offline is the recoverable one, and the only one worth retrying by
+         itself — a missing scope or an expired session needs a person. The
+         work is already in the cache marked unsent, so a retry that also
+         fails costs nothing. */
+      if (next === "offline") {
+        const wait = retryDelay(attempt.current);
+        attempt.current += 1;
+        clearTimeout(retry.current);
+        retry.current = setTimeout(() => { if (dirty.current) push(); }, wait);
+      }
     }
-  }, [user]);
+  }, [cache, markPending, user]);
+
+  // Kept current so `load` can reach it without a circular dependency.
+  pushRef.current = push;
 
   const update = useCallback((mutator) => {
     setDoc((prev) => {
       const next = typeof mutator === "function" ? mutator(prev) : mutator;
       latest.current = next;
-      if (user) cache(user.email, next);
+      markPending(true);
+      if (user) cache(user.email, next, { dirty: true, base: baseTime.current });
       clearTimeout(timer.current);
       timer.current = setTimeout(push, SAVE_DELAY);
       return next;
     });
-  }, [cache, push, user]);
+  }, [cache, markPending, push, user]);
 
   /* Retry after an offline stretch, or force a fresh pull. */
   const syncNow = useCallback(async () => {
@@ -168,7 +282,8 @@ export function useCloudDoc() {
         if (cancelled) return;
       } catch (e) { setError(e.message); return; }
     }
-    if (status === "offline" && latest.current) await push();
+    attempt.current = 0;
+    if ((status === "offline" || dirty.current) && latest.current) await push();
     else await load(user);
   }, [load, push, status, user]);
 
@@ -180,6 +295,8 @@ export function useCloudDoc() {
       if (user) await cache(user.email, conflict.theirs);
       const fresh = await Sheets.loadDoc({ email: user?.email });
       baseTime.current = fresh.modifiedTime;
+      markPending(false);
+      await cache(user.email, conflict.theirs, { base: baseTime.current });
       setConflict(null);
       setStatus("ready");
       return;
@@ -190,12 +307,14 @@ export function useCloudDoc() {
     try {
       const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, null, { force: true });
       baseTime.current = modifiedTime;
+      markPending(false);
+      await cache(user.email, latest.current, { base: modifiedTime });
       setStatus("ready");
     } catch (e) {
       setError(e.message);
       setStatus("offline");
     }
-  }, [cache, conflict, user]);
+  }, [cache, conflict, markPending, user]);
 
   /* ------------------------------------------------------------ session -- */
 
@@ -260,6 +379,8 @@ export function useCloudDoc() {
      of the two. */
   const signOut = useCallback(async () => {
     clearTimeout(timer.current);
+    clearTimeout(retry.current);
+    markPending(false);
     if (user) {
       try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {}
       await Sheets.forgetSheet(user.email);
@@ -273,11 +394,13 @@ export function useCloudDoc() {
     baseTime.current = null;
     setConflict(null);
     setStatus("signed-out");
-  }, [user]);
+  }, [markPending, user]);
 
   /* Cuts the app's Drive access off at Google's end, not just locally. */
   const disconnect = useCallback(async () => {
     clearTimeout(timer.current);
+    clearTimeout(retry.current);
+    markPending(false);
     if (user) {
       try { await AsyncStorage.removeItem(cacheKey(user.email)); } catch (_) {}
       await Sheets.forgetSheet(user.email);
@@ -302,6 +425,8 @@ export function useCloudDoc() {
      begin with, which is the screen worth getting back to. */
   const startOver = useCallback(async () => {
     clearTimeout(timer.current);
+    clearTimeout(retry.current);
+    markPending(false);
     setStatus("loading");
     try {
       if (fileId.current) await Sheets.trashSheet(fileId.current);
@@ -324,10 +449,46 @@ export function useCloudDoc() {
     setStatus("choose-location");
   }, [user]);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  /* Catching up without being asked.
+
+     A backoff timer alone is not enough: a phone that lost signal in a lift
+     and was then put in a pocket has nothing running worth waiting on. The
+     two moments a connection has most likely returned are the app coming back
+     to the foreground, and — on the web — the browser saying so outright.
+     Both are free to listen for and neither needs a native dependency.
+
+     Only fires when something is actually waiting, so the common case of
+     opening the app with everything saved costs no requests. */
+  useEffect(() => {
+    const catchUp = () => {
+      if (!dirty.current || !user || !fileId.current) return;
+      attempt.current = 0;
+      if (pushRef.current) pushRef.current();
+    };
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") catchUp();
+    });
+
+    let offOnline;
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("online", catchUp);
+      offOnline = () => window.removeEventListener("online", catchUp);
+    }
+
+    return () => {
+      if (sub && sub.remove) sub.remove();
+      if (offOnline) offOnline();
+    };
+  }, [user]);
+
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    clearTimeout(retry.current);
+  }, []);
 
   return {
-    user, doc, status, error, conflict,
+    user, doc, status, error, conflict, pending,
     update, syncNow, resolveConflict,
     signIn, signOut, disconnect, grantAccess, resetPermissions, createIn, exportCsvFile,
     startOver,

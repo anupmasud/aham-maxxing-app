@@ -20,6 +20,7 @@ import { TEMPLATES, templateById } from "./src/model/seed";
    line like this drift the moment one of them is edited. */
 const TAGLINE = "Your definition of success. Your Google Drive.";
 import * as M from "./src/model/targets";
+import { waitingFor } from "./src/model/sync";
 import * as Reminders from "./src/reminders";
 
 import Today from "./src/screens/Today";
@@ -45,9 +46,25 @@ const STATUS = {
   error: "Problem",
 };
 
+/* What the header says about where your entries actually are.
+
+   "Offline" on its own answers the wrong question. The thing worth knowing is
+   not whether there is signal, it is whether what you just logged is safe —
+   so when something is waiting, the label says so and how long it has been
+   waiting, and the app keeps trying on its own. Tapping it tries now. */
+function syncLabel(status, pending) {
+  if (status === "saving") return { text: "Saving…", tone: C.ink2 };
+  if (pending) {
+    const age = waitingFor(pending.since);
+    return { text: age ? `On this phone · ${age}` : "On this phone", tone: C.warn };
+  }
+  if (status === "ready") return { text: "Saved to Drive", tone: C.good };
+  return { text: STATUS[status] || status, tone: status === "error" ? C.over : C.ink2 };
+}
+
 export default function App() {
   const {
-    user, doc, status, error, conflict, configured,
+    user, doc, status, error, conflict, configured, pending,
     update, syncNow, resolveConflict, signIn, signOut, disconnect,
     grantAccess, resetPermissions, createIn, exportCsvFile, startOver, folderUrl, sheetUrl,
   } = useCloudDoc();
@@ -303,6 +320,8 @@ export default function App() {
     syncNow, signOut, disconnect, folderUrl, sheetUrl, exportCsvFile, startOver,
   };
 
+  const sync = syncLabel(status, pending);
+
   return (
     <SafeAreaView style={S.screen}>
       <StatusBar barStyle="dark-content" />
@@ -319,11 +338,8 @@ export default function App() {
           </View>
         )}
         <Pressable onPress={syncNow} hitSlop={8} style={{ marginLeft: 8 }}>
-          <Text style={{
-            fontSize: 11, fontWeight: "600",
-            color: status === "ready" ? C.good : status === "error" ? C.over : C.ink2,
-          }}>
-            {STATUS[status] || status}
+          <Text style={{ fontSize: 11, fontWeight: "600", color: sync.tone }}>
+            {sync.text}
           </Text>
         </Pressable>
       </View>
@@ -353,6 +369,7 @@ export default function App() {
 
 function Gate({ title, tagline, children, scroll }) {
   const Inner = scroll ? ScrollView : View;
+
   return (
     <SafeAreaView style={S.screen}>
       <StatusBar barStyle="dark-content" />

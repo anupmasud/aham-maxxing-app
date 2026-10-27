@@ -113,6 +113,95 @@ export function sameDoc(a, b) {
   return stableStringify(pick(a)) === stableStringify(pick(b));
 }
 
+/* ------------------------------------------------------------- merging -- */
+
+/* Most "conflicts" are not disagreements at all.
+
+   Two devices, and the phone logged today while the browser logged yesterday.
+   Nothing contradicts; the two copies simply each know something the other
+   does not. Asking a person to pick one — and throw the other away — is the
+   wrong question, and it is the question they were being asked over and over.
+
+   So: if the only differences are days one side has and the other lacks, the
+   two are folded together and nobody is asked anything. A real disagreement —
+   the same target, on the same day, with two different values, or a change to
+   what the targets themselves are — still stops and asks, because that is a
+   decision only a person can make.
+
+   Drive is the base of the merge. It is the durable copy and the one other
+   devices read, so when something has to win by default, it wins. */
+
+const DAY_MAPS = ["log", "notes", "plans"];
+const STRUCTURE = ["categories", "targets", "timers", "breaks"];
+
+const asMap = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+
+/* Day-keyed maps folded together. Returns null the moment the same entry
+   holds two different values, because that is a genuine disagreement. */
+function mergeDayMap(mine, theirs) {
+  const a = asMap(mine);
+  const b = asMap(theirs);
+  const out = { ...b };
+  for (const day of Object.keys(a)) {
+    if (!(day in b)) { out[day] = a[day]; continue; }
+    const mineDay = asMap(a[day]);
+    const theirDay = asMap(b[day]);
+    const merged = { ...theirDay };
+    for (const id of Object.keys(mineDay)) {
+      if (!(id in theirDay)) { merged[id] = mineDay[id]; continue; }
+      if (stableStringify(mineDay[id]) !== stableStringify(theirDay[id])) return null;
+    }
+    out[day] = merged;
+  }
+  return out;
+}
+
+/* Lists keyed by id. An id on one side only is added; an id on both with
+   different contents is a disagreement. */
+function mergeById(mine, theirs) {
+  const a = Array.isArray(mine) ? mine : [];
+  const b = Array.isArray(theirs) ? theirs : [];
+  const byId = {};
+  b.forEach((x) => { if (x && x.id) byId[x.id] = x; });
+  const out = b.slice();
+  for (const item of a) {
+    if (!item || !item.id) continue;
+    const other = byId[item.id];
+    if (!other) { out.push(item); continue; }
+    if (stableStringify(item) !== stableStringify(other)) return null;
+  }
+  return out;
+}
+
+/* The merged document, or null when a person has to decide.
+
+   Null is not a failure — it is the honest answer whenever folding the two
+   together would mean choosing something on somebody's behalf. */
+export function mergeDocs(mine, theirs) {
+  if (!mine || !theirs) return null;
+
+  /* A change to the targets themselves is never merged. Union would
+     resurrect a target deleted on the other device, which is worse than
+     asking: a deletion is a decision, and quietly undoing one is the kind of
+     bug nobody reports because they assume they imagined it. */
+  for (const key of STRUCTURE) {
+    if (stableStringify(mine[key] ?? null) !== stableStringify(theirs[key] ?? null)) return null;
+  }
+
+  const merged = { ...theirs };
+  for (const key of DAY_MAPS) {
+    const m = mergeDayMap(mine[key], theirs[key]);
+    if (m === null) return null;
+    merged[key] = m;
+  }
+
+  const tasks = mergeById(mine.tasks, theirs.tasks);
+  if (tasks === null) return null;
+  merged.tasks = tasks;
+
+  return merged;
+}
+
 /* How long to wait before trying Drive again.
 
    Backs off so a phone with no signal is not retrying every second for an

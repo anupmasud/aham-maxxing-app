@@ -164,5 +164,86 @@ console.log("\n10. stable stringify, the thing that makes the comparison honest"
      ["5", '"x"', "true"]);
 }
 
+console.log("\n11. two devices that each know something the other does not");
+{
+  const base = {
+    categories: [{ id: "c1", name: "Movement", order: 0 }],
+    targets: [{ id: "t1", name: "Walk" }],
+    timers: [], breaks: [], tasks: [], plans: {}, notes: {},
+  };
+  const mine = { ...base, log: { "2026-10-26": { t1: true } } };
+  const theirs = { ...base, log: { "2026-10-25": { t1: true } } };
+
+  const m = M.mergeDocs(mine, theirs);
+  eq("both days survive", Object.keys(m.log).sort(), ["2026-10-25", "2026-10-26"]);
+  eq("nobody is asked anything", m !== null, true);
+  eq("the originals are untouched", Object.keys(mine.log), ["2026-10-26"]);
+}
+
+console.log("\n12. the same day, different targets, is still not a disagreement");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {} };
+  const mine = { ...base, log: { "2026-10-26": { t1: true } } };
+  const theirs = { ...base, log: { "2026-10-26": { t2: 8000 } } };
+  const m = M.mergeDocs(mine, theirs);
+  eq("both entries kept", m.log["2026-10-26"], { t2: 8000, t1: true });
+}
+
+console.log("\n13. a real disagreement stops and asks");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {} };
+  const mine = { ...base, log: { "2026-10-26": { t1: 3 } } };
+  const theirs = { ...base, log: { "2026-10-26": { t1: 5 } } };
+  eq("same target, same day, two values", M.mergeDocs(mine, theirs), null);
+
+  // Identical values are not a disagreement.
+  eq("the same value on both sides is fine",
+     M.mergeDocs(mine, { ...base, log: { "2026-10-26": { t1: 3 } } }) !== null, true);
+}
+
+console.log("\n14. changes to the targets themselves are never merged");
+{
+  const mk = (targets) => ({
+    categories: [], targets, timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log: {},
+  });
+  eq("a target added on one side",
+     M.mergeDocs(mk([{ id: "t1" }, { id: "t2" }]), mk([{ id: "t1" }])), null);
+  eq("a target deleted on one side — union would undo the deletion",
+     M.mergeDocs(mk([{ id: "t1" }]), mk([{ id: "t1" }, { id: "t2" }])), null);
+  eq("a renamed target",
+     M.mergeDocs(mk([{ id: "t1", name: "Walk" }]), mk([{ id: "t1", name: "Walking" }])), null);
+  eq("identical targets merge fine",
+     M.mergeDocs(mk([{ id: "t1" }]), mk([{ id: "t1" }])) !== null, true);
+}
+
+console.log("\n15. notes, plans and tasks fold together on the same rules");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], log: {} };
+  const mine = { ...base, plans: {}, notes: { "2026-10-26": { t1: "felt strong" } },
+                 tasks: [{ id: "k1", day: "2026-10-26", name: "Call" }] };
+  const theirs = { ...base, plans: {}, notes: { "2026-10-25": { t1: "sore" } },
+                   tasks: [{ id: "k2", day: "2026-10-25", name: "Post" }] };
+  const m = M.mergeDocs(mine, theirs);
+  eq("both notes", Object.keys(m.notes).sort(), ["2026-10-25", "2026-10-26"]);
+  eq("both tasks", m.tasks.map((t) => t.id).sort(), ["k1", "k2"]);
+
+  eq("the same note written two ways is a disagreement",
+     M.mergeDocs({ ...mine, notes: { "2026-10-26": { t1: "a" } } },
+                 { ...theirs, notes: { "2026-10-26": { t1: "b" } } }), null);
+  eq("the same task edited on both sides is a disagreement",
+     M.mergeDocs({ ...mine, tasks: [{ id: "k1", name: "Call", done: true }] },
+                 { ...theirs, tasks: [{ id: "k1", name: "Call", done: false }] }), null);
+}
+
+console.log("\n16. Drive is the base when something has to win");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log: {} };
+  const m = M.mergeDocs({ ...base, createdAt: "mine", homeTab: "today" },
+                        { ...base, createdAt: "theirs", homeTab: "insights" });
+  eq("settings come from Drive", [m.createdAt, m.homeTab], ["theirs", "insights"]);
+  eq("a missing side cannot merge", M.mergeDocs(null, base), null);
+  eq("nor the other way", M.mergeDocs(base, null), null);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

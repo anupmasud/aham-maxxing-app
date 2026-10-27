@@ -275,13 +275,21 @@ export default function App() {
     return (
       <Gate title="Two versions">
         <Text style={S.body}>
-          This changed somewhere else — another device, or an edit made directly
-          in Drive — since this device last loaded it. Nothing has been overwritten.
+          The same thing was changed in two places — on this device and
+          somewhere else — so the two cannot simply be folded together.
+          Nothing has been overwritten.
         </Text>
         <Compare label="On this device" doc={conflict?.mine} />
         <Compare label="In Drive" doc={conflict?.theirs} />
-        <Btn primary label="Keep this device’s version" onPress={() => resolveConflict("mine")} />
-        <Btn label="Use the version in Drive" onPress={() => resolveConflict("theirs")} />
+        {/* Drive first, and the plainer label, because it is the shared copy
+            every other device reads. */}
+        <Btn primary label="Use the version in Drive" onPress={() => resolveConflict("theirs")} />
+        <Btn label="Keep this device’s, overwriting Drive" onPress={() => resolveConflict("mine")} />
+        <Text style={[S.tiny, { marginTop: 10 }]}>
+          Days only one side knows about are merged automatically — this asks
+          only when the same entry holds two different values.
+        </Text>
+        {!!error && <Text style={S.error}>{error}</Text>}
       </Gate>
     );
   }

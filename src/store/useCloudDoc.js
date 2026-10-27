@@ -19,7 +19,7 @@ import * as Auth from "../google/auth";
 import * as Drive from "../google/drive";
 import { exportCsv } from "../model/csv";
 import * as Sheets from "../google/sheets";
-import { decideOnLoad, envelope, readEnvelope, retryDelay, sameDoc } from "../model/sync";
+import { decideOnLoad, envelope, mergeDocs, readEnvelope, retryDelay, sameDoc } from "../model/sync";
 
 const SAVE_DELAY = 1200;
 const cacheKey = (email) => `ahammaxxing:doc:${email || "anon"}`;
@@ -147,6 +147,22 @@ export function useCloudDoc() {
           setError("");
           return;
         }
+        /* Most differences are two devices each knowing a day the other
+           does not, which is not a disagreement and should not be a
+           question. Folded together and saved; only a real clash asks. */
+        const merged = mergeDocs(cached, remote);
+        if (merged) {
+          baseTime.current = modifiedTime;
+          setDoc(merged);
+          latest.current = merged;
+          markPending(true);
+          await cache(u.email, merged, { dirty: true, base: modifiedTime });
+          setStatus("ready");
+          setError("");
+          if (pushRef.current) await pushRef.current();
+          return;
+        }
+
         baseTime.current = modifiedTime;
         setConflict({ mine: cached, theirs: remote });
         setStatus("conflict");
@@ -231,9 +247,30 @@ export function useCloudDoc() {
             setError("");
             return;
           }
+          const merged = mergeDocs(latest.current, theirs);
+          if (merged) {
+            baseTime.current = modifiedTime;
+            setDoc(merged);
+            latest.current = merged;
+            await cache(user.email, merged, { dirty: true, base: modifiedTime });
+            const saved = await Sheets.saveDoc(fileId.current, merged, modifiedTime);
+            baseTime.current = saved.modifiedTime;
+            markPending(false);
+            await cache(user.email, merged, { base: saved.modifiedTime });
+            setStatus("ready");
+            setError("");
+            return;
+          }
           setConflict({ mine: latest.current, theirs });
         } catch (_) {
-          setConflict({ mine: latest.current, theirs: null });
+          /* The other side could not be fetched, so there is nothing to
+             compare and nothing to show. Stay offline and try again rather
+             than presenting a choice where one of the two options is blank —
+             which is how "use the version in Drive" came to mean its
+             opposite. */
+          setStatus("offline");
+          setError("Could not read the version in Drive. Still saved on this device.");
+          return;
         }
         setStatus("conflict");
         return;
@@ -289,16 +326,34 @@ export function useCloudDoc() {
 
   const resolveConflict = useCallback(async (keep) => {
     if (!conflict) return;
-    if (keep === "theirs" && conflict.theirs) {
-      setDoc(conflict.theirs);
-      latest.current = conflict.theirs;
-      if (user) await cache(user.email, conflict.theirs);
-      const fresh = await Sheets.loadDoc({ email: user?.email });
-      baseTime.current = fresh.modifiedTime;
-      markPending(false);
-      await cache(user.email, conflict.theirs, { base: baseTime.current });
-      setConflict(null);
-      setStatus("ready");
+
+    /* Choosing Drive used to be a guard with no else: when the other copy was
+       missing the branch was skipped and execution fell into the one below,
+       which force-overwrites Drive with this device's copy. Pressing "use the
+       version in Drive" did the exact opposite, silently. Nothing here may
+       fall through to a destructive default. */
+    if (keep === "theirs") {
+      setStatus("loading");
+      try {
+        // Always read Drive afresh rather than trusting the copy fetched when
+        // the conflict was raised, which may be minutes old or absent.
+        const fresh = await Sheets.loadDoc({ email: user?.email });
+        const theirs = fresh.doc || conflict.theirs;
+        if (!theirs) throw new Error("There is nothing in Drive to load yet.");
+        setDoc(theirs);
+        latest.current = theirs;
+        baseTime.current = fresh.modifiedTime;
+        markPending(false);
+        if (user) await cache(user.email, theirs, { base: fresh.modifiedTime });
+        setConflict(null);
+        setStatus("ready");
+        setError("");
+      } catch (e) {
+        // Say so and leave both copies alone. Doing the opposite of what was
+        // asked is never the fallback.
+        setError(e.message || "Could not load the version in Drive.");
+        setStatus("conflict");
+      }
       return;
     }
     // Keeping mine means deliberately overwriting the other side.

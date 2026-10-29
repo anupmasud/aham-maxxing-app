@@ -245,5 +245,156 @@ console.log("\n16. Drive is the base when something has to win");
   eq("nor the other way", M.mergeDocs(base, null), null);
 }
 
+console.log("\n17. Drive wins, but nothing that can be kept is discarded");
+{
+  const base = {
+    categories: [{ id: "c1" }], targets: [{ id: "t1" }],
+    timers: [], breaks: [], tasks: [], plans: {}, notes: {},
+  };
+
+  // A day only this device knows about is kept — it costs nothing.
+  const mine = { ...base, log: { "2026-10-28": { t1: true }, "2026-10-29": { t1: 5 } } };
+  const theirs = { ...base, log: { "2026-10-28": { t1: true } } };
+  const r = M.preferDrive(mine, theirs);
+  eq("the day Drive never saw survives", Object.keys(r.doc.log).sort(), ["2026-10-28", "2026-10-29"]);
+  eq("nothing was dropped", r.dropped, 0);
+
+  // A genuine clash: Drive's value is taken, and it is counted.
+  const clash = M.preferDrive(
+    { ...base, log: { "2026-10-28": { t1: 3 } } },
+    { ...base, log: { "2026-10-28": { t1: 9 } } });
+  eq("Drive's value wins", clash.doc.log["2026-10-28"].t1, 9);
+  eq("and the loss is counted, not silent", clash.dropped, 1);
+
+  // Entries for other targets on the same day are untouched by that.
+  const mixed = M.preferDrive(
+    { ...base, log: { "2026-10-28": { t1: 3, t2: 1 } } },
+    { ...base, log: { "2026-10-28": { t1: 9 } } });
+  eq("the other entry is kept", mixed.doc.log["2026-10-28"], { t1: 9, t2: 1 });
+  eq("one clash counted", mixed.dropped, 1);
+}
+
+console.log("\n18. targets come from Drive, so a deletion is not undone");
+{
+  const mk = (targets) => ({
+    categories: [], targets, timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log: {},
+  });
+  const r = M.preferDrive(mk([{ id: "t1" }, { id: "t2" }]), mk([{ id: "t1" }]));
+  eq("a target deleted elsewhere stays deleted", r.doc.targets.map((t) => t.id), ["t1"]);
+}
+
+console.log("\n19. tasks fold in the same way");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], plans: {}, notes: {}, log: {} };
+  const r = M.preferDrive(
+    { ...base, tasks: [{ id: "k1", name: "Call", done: true }, { id: "k2", name: "Post" }] },
+    { ...base, tasks: [{ id: "k1", name: "Call", done: false }] });
+  eq("the task only this device had is kept", r.doc.tasks.map((t) => t.id).sort(), ["k1", "k2"]);
+  eq("Drive's version of the shared one wins", r.doc.tasks.find((t) => t.id === "k1").done, false);
+  eq("counted", r.dropped, 1);
+}
+
+console.log("\n20. the edges");
+{
+  const base = { categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log: {} };
+  eq("no Drive copy means no answer", M.preferDrive(base, null), null);
+  eq("no local copy is simply Drive's", M.preferDrive(null, base), { doc: base, dropped: 0 });
+}
+
+console.log("\n21. a save carries only this device's own changes");
+{
+  const mk = (log, targets = [{ id: "t1" }], tasks = []) => ({
+    categories: [], targets, timers: [], breaks: [], tasks,
+    plans: {}, notes: {}, log,
+  });
+
+  /* The case that cost real data: this device has an older copy, Drive has
+     days it has never seen. A plain write removes them. */
+  const base   = mk({ "2026-10-27": { t1: 1 } });
+  const mine   = mk({ "2026-10-27": { t1: 1 }, "2026-10-29": { t1: 1 } });
+  const theirs = mk({ "2026-10-27": { t1: 1 }, "2026-10-28": { t1: 1 } });
+
+  const out = M.threeWay(base, mine, theirs);
+  eq("Drive's day this device never saw survives",
+     Object.keys(out.log).sort(), ["2026-10-27", "2026-10-28", "2026-10-29"]);
+  eq("and this device's new day is carried up", out.log["2026-10-29"], { t1: 1 });
+}
+
+console.log("\n22. deleting still works, because the base says it was deliberate");
+{
+  const mk = (log) => ({ categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log });
+  const base   = mk({ "2026-10-27": { t1: 1, t2: 1 } });
+  const mine   = mk({ "2026-10-27": { t1: 1 } });            // unticked t2
+  const theirs = mk({ "2026-10-27": { t1: 1, t2: 1 } });
+
+  const out = M.threeWay(base, mine, theirs);
+  eq("the untick sticks", out.log["2026-10-27"], { t1: 1 });
+
+  // A whole day cleared here is removed there.
+  const cleared = M.threeWay(mk({ "2026-10-27": { t1: 1 } }), mk({}), mk({ "2026-10-27": { t1: 1 } }));
+  eq("a cleared day goes", Object.keys(cleared.log), []);
+}
+
+console.log("\n23. an entry changed in both places takes this device's change");
+{
+  const mk = (log) => ({ categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log });
+  const out = M.threeWay(
+    mk({ "2026-10-27": { t1: 1 } }),
+    mk({ "2026-10-27": { t1: 5 } }),
+    mk({ "2026-10-27": { t1: 9 } }));
+  eq("the edit made here wins", out.log["2026-10-27"].t1, 5);
+
+  // Untouched here: Drive's version stands.
+  const untouched = M.threeWay(
+    mk({ "2026-10-27": { t1: 1 } }),
+    mk({ "2026-10-27": { t1: 1 } }),
+    mk({ "2026-10-27": { t1: 9 } }));
+  eq("what this device did not touch is left alone", untouched.log["2026-10-27"].t1, 9);
+}
+
+console.log("\n24. targets, tasks and the rest follow the same rules");
+{
+  const mk = (targets, tasks = []) => ({
+    categories: [], targets, timers: [], breaks: [], tasks, plans: {}, notes: {}, log: {},
+  });
+  const base   = mk([{ id: "t1", name: "Walk" }]);
+  const mine   = mk([{ id: "t1", name: "Walk" }, { id: "t2", name: "Swim" }]);
+  const theirs = mk([{ id: "t1", name: "Walk" }, { id: "t3", name: "Yoga" }]);
+
+  const out = M.threeWay(base, mine, theirs);
+  eq("both devices' new targets survive", out.targets.map((t) => t.id).sort(), ["t1", "t2", "t3"]);
+
+  // Deleted here, still in Drive: the deletion is honoured.
+  const del = M.threeWay(mk([{ id: "t1" }, { id: "t2" }]), mk([{ id: "t1" }]), mk([{ id: "t1" }, { id: "t2" }]));
+  eq("a target deleted here is removed", del.targets.map((t) => t.id), ["t1"]);
+
+  // Renamed here while Drive left it alone.
+  const ren = M.threeWay(mk([{ id: "t1", name: "Walk" }]), mk([{ id: "t1", name: "Walking" }]), mk([{ id: "t1", name: "Walk" }]));
+  eq("a rename here is carried up", ren.targets[0].name, "Walking");
+
+  // Drive deleted it; adding it back from here would undo their deletion.
+  const gone = M.threeWay(mk([{ id: "t1" }, { id: "t2" }]), mk([{ id: "t1" }, { id: "t2" }]), mk([{ id: "t1" }]));
+  eq("a target Drive deleted stays deleted", gone.targets.map((t) => t.id), ["t1"]);
+}
+
+console.log("\n25. without a base there is nothing to reason from");
+{
+  const d = { categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log: {} };
+  eq("no base means no answer — the caller decides", M.threeWay(null, d, d), null);
+  eq("no local copy is simply Drive's", M.threeWay(d, null, d), d);
+  eq("no Drive copy is simply this one", M.threeWay(d, d, null), d);
+}
+
+console.log("\n26. the cache remembers what Drive last had");
+{
+  const doc = { log: { a: 1 } };
+  const baseDoc = { log: {} };
+  const e = M.envelope(doc, { dirty: true, base: "T", baseDoc });
+  eq("stored", e.baseDoc, baseDoc);
+  eq("read back", M.readEnvelope(e).baseDoc, baseDoc);
+  eq("a cache written before it existed has none",
+     M.readEnvelope({ v: 2, doc, dirty: true, base: "T" }).baseDoc, null);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

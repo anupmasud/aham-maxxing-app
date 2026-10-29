@@ -36,8 +36,16 @@
    away" from "somebody did". */
 export const ENVELOPE = 2;
 
-export function envelope(doc, { dirty = false, base = null, at = null } = {}) {
-  return { v: ENVELOPE, doc, dirty: !!dirty, base: base || null, at: at || new Date().toISOString() };
+export function envelope(doc, { dirty = false, base = null, at = null, baseDoc = null } = {}) {
+  return {
+    v: ENVELOPE, doc, dirty: !!dirty, base: base || null,
+    /* The document as Drive last had it. Without it the app can only ask
+       "do these two differ", which cannot tell an entry somebody deleted
+       from one another device has not seen yet — and guessing that wrong is
+       how a save removes days from Drive. */
+    baseDoc: baseDoc || null,
+    at: at || new Date().toISOString(),
+  };
 }
 
 /* Reads a cache written by any version.
@@ -47,7 +55,7 @@ export function envelope(doc, { dirty = false, base = null, at = null } = {}) {
    legacy cache is read as clean, which is what it effectively was. */
 export function readEnvelope(raw) {
   if (!raw || typeof raw !== "object") return null;
-  if (raw.v === ENVELOPE && raw.doc) return { ...raw, dirty: !!raw.dirty };
+  if (raw.v === ENVELOPE && raw.doc) return { ...raw, dirty: !!raw.dirty, baseDoc: raw.baseDoc || null };
   // Legacy: the document itself, with no wrapper.
   if (raw.categories || raw.targets || raw.log) {
     return { v: 1, doc: raw, dirty: false, base: null, at: null };
@@ -200,6 +208,172 @@ export function mergeDocs(mine, theirs) {
   merged.tasks = tasks;
 
   return merged;
+}
+
+/* Three-way merge: what changed here, applied to what is in Drive.
+
+   This is what makes "my Drive is never overwritten" true rather than
+   hopeful. Every other approach compares two documents and has to guess what
+   the difference means — and an entry present in Drive but missing here is
+   ambiguous between "I deleted it" and "another device added it while I was
+   away". Guess that wrong in the second case and a save quietly removes days
+   from Drive, which is exactly what happened.
+
+   With the document Drive last agreed with in hand there is no guessing:
+
+     in base, gone here          → deleted on purpose, remove it
+     not in base, here           → added here, add it
+     changed here                → apply the change
+     in Drive, not in base       → another device's work, leave it alone
+
+   The result is that a save can only ever carry this device's own changes.
+   Anything it never knew about survives untouched.
+
+   `theirs` is the base of the result, so when this device has nothing to say
+   about something, Drive's version stands. */
+function threeWayDayMap(base, mine, theirs) {
+  const b = asMap(base);
+  const m = asMap(mine);
+  const t = asMap(theirs);
+  const out = { ...t };
+
+  // Days removed here on purpose.
+  for (const day of Object.keys(b)) {
+    if (!(day in m)) delete out[day];
+  }
+
+  for (const day of Object.keys(m)) {
+    const mineDay = asMap(m[day]);
+    const baseDay = asMap(b[day]);
+    const theirDay = asMap(t[day]);
+    const merged = { ...theirDay };
+
+    for (const id of Object.keys(mineDay)) {
+      if (stableStringify(mineDay[id]) !== stableStringify(baseDay[id])) merged[id] = mineDay[id];
+    }
+    for (const id of Object.keys(baseDay)) {
+      if (!(id in mineDay)) delete merged[id];
+    }
+
+    if (Object.keys(merged).length) out[day] = merged;
+    else delete out[day];
+  }
+  return out;
+}
+
+function threeWayList(base, mine, theirs) {
+  const b = Array.isArray(base) ? base : [];
+  const m = Array.isArray(mine) ? mine : [];
+  const t = Array.isArray(theirs) ? theirs : [];
+
+  const baseById = {};
+  b.forEach((x) => { if (x && x.id) baseById[x.id] = x; });
+  const mineById = {};
+  m.forEach((x) => { if (x && x.id) mineById[x.id] = x; });
+
+  const out = [];
+  const seen = new Set();
+
+  for (const item of t) {
+    if (!item || !item.id) { out.push(item); continue; }
+    seen.add(item.id);
+    if (item.id in baseById && !(item.id in mineById)) continue;   // deleted here
+    const here = mineById[item.id];
+    if (here && stableStringify(here) !== stableStringify(baseById[item.id])) out.push(here);
+    else out.push(item);
+  }
+
+  // Added here, and Drive has never seen it.
+  for (const item of m) {
+    if (!item || !item.id || seen.has(item.id)) continue;
+    if (item.id in baseById) continue;   // Drive deleted it; respect that
+    out.push(item);
+  }
+  return out;
+}
+
+const LISTS = ["categories", "targets", "timers", "breaks", "tasks"];
+
+export function threeWay(base, mine, theirs) {
+  if (!mine) return theirs || null;
+  if (!theirs) return mine;
+  if (!base) return null;   // nothing to reason from; the caller decides
+
+  const out = { ...theirs };
+  DAY_MAPS.forEach((k) => { out[k] = threeWayDayMap(base[k], mine[k], theirs[k]); });
+  LISTS.forEach((k) => { out[k] = threeWayList(base[k], mine[k], theirs[k]); });
+
+  // Settings follow this device, which is where they were just changed.
+  out.reminders = mine.reminders || theirs.reminders;
+  out.homeTab = mine.homeTab || theirs.homeTab;
+  out.createdAt = theirs.createdAt || mine.createdAt;
+  return out;
+}
+
+/* Drive wins, and nothing that can be kept is thrown away.
+
+   Asked for twice, plainly: the copy in Drive is the one that counts. So a
+   difference is no longer a question. What happens instead:
+
+   Everything only this device knows — a day Drive has never seen, a task it
+   does not have — is folded in, because keeping it costs nothing and loses
+   nothing. Where the two genuinely disagree, the same entry holding two
+   different values, Drive's value is taken and this device's is dropped.
+
+   The count of what was dropped comes back with the document, because this
+   is the one place the app discards something a person typed, and doing that
+   silently would be the wrong kind of quiet. */
+function preferDayMap(mine, theirs, tally) {
+  const a = asMap(mine);
+  const b = asMap(theirs);
+  const out = { ...b };
+  for (const day of Object.keys(a)) {
+    if (!(day in b)) { out[day] = a[day]; continue; }
+    const mineDay = asMap(a[day]);
+    const theirDay = asMap(b[day]);
+    const merged = { ...theirDay };
+    for (const id of Object.keys(mineDay)) {
+      if (!(id in theirDay)) { merged[id] = mineDay[id]; continue; }
+      if (stableStringify(mineDay[id]) !== stableStringify(theirDay[id])) tally.dropped += 1;
+    }
+    out[day] = merged;
+  }
+  return out;
+}
+
+function preferById(mine, theirs, tally) {
+  const a = Array.isArray(mine) ? mine : [];
+  const b = Array.isArray(theirs) ? theirs : [];
+  const byId = {};
+  b.forEach((x) => { if (x && x.id) byId[x.id] = x; });
+  const out = b.slice();
+  for (const item of a) {
+    if (!item || !item.id) continue;
+    const other = byId[item.id];
+    if (!other) { out.push(item); continue; }
+    if (stableStringify(item) !== stableStringify(other)) tally.dropped += 1;
+  }
+  return out;
+}
+
+export function preferDrive(mine, theirs) {
+  if (!theirs) return null;
+  if (!mine) return { doc: theirs, dropped: 0 };
+
+  const tally = { dropped: 0 };
+  const doc = { ...theirs };
+  DAY_MAPS.forEach((key) => { doc[key] = preferDayMap(mine[key], theirs[key], tally); });
+  doc.tasks = preferById(mine.tasks, theirs.tasks, tally);
+
+  /* The targets themselves come from Drive untouched. Folding in a target
+     this device still has would resurrect one deleted on the other, and a
+     deletion is a decision. Their day-by-day entries survive regardless —
+     the Log keeps whatever was logged against them. */
+  STRUCTURE.forEach((key) => {
+    if (stableStringify(mine[key] ?? null) !== stableStringify(theirs[key] ?? null)) tally.dropped += 0;
+  });
+
+  return { doc, dropped: tally.dropped };
 }
 
 /* How long to wait before trying Drive again.

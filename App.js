@@ -64,7 +64,7 @@ function syncLabel(status, pending) {
 
 export default function App() {
   const {
-    user, doc, status, error, conflict, configured, pending,
+    user, doc, status, error, conflict, configured, pending, dropped, clearDropped,
     update, syncNow, resolveConflict, signIn, signOut, disconnect,
     grantAccess, resetPermissions, createIn, exportCsvFile, startOver, folderUrl, sheetUrl,
   } = useCloudDoc();
@@ -284,10 +284,10 @@ export default function App() {
         {/* Drive first, and the plainer label, because it is the shared copy
             every other device reads. */}
         <Btn primary label="Use the version in Drive" onPress={() => resolveConflict("theirs")} />
-        <Btn label="Keep this device’s, overwriting Drive" onPress={() => resolveConflict("mine")} />
+        <Btn label="Keep this device’s changes" onPress={() => resolveConflict("mine")} />
         <Text style={[S.tiny, { marginTop: 10 }]}>
-          Days only one side knows about are merged automatically — this asks
-          only when the same entry holds two different values.
+          Either way nothing in Drive is removed: a save only ever carries this
+          device’s own changes.
         </Text>
         {!!error && <Text style={S.error}>{error}</Text>}
       </Gate>
@@ -351,6 +351,18 @@ export default function App() {
           </Text>
         </Pressable>
       </View>
+
+      {dropped > 0 && (
+        <Pressable onPress={clearDropped} style={[a.pill, {
+          backgroundColor: C.warn + "1A", marginHorizontal: 18, marginBottom: 8,
+          alignSelf: "stretch", paddingVertical: 8,
+        }]}>
+          <Text style={{ fontSize: 11.5, color: C.warn, fontWeight: "600" }}>
+            {dropped} entr{dropped === 1 ? "y" : "ies"} differed and Drive's version was kept.
+            Tap to dismiss.
+          </Text>
+        </Pressable>
+      )}
 
       <View style={{ flex: 1 }}>
         {tab === "today" && <Today {...props} />}

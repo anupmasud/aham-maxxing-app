@@ -19,7 +19,9 @@ import * as Auth from "../google/auth";
 import * as Drive from "../google/drive";
 import { exportCsv } from "../model/csv";
 import * as Sheets from "../google/sheets";
-import { decideOnLoad, envelope, mergeDocs, readEnvelope, retryDelay, sameDoc } from "../model/sync";
+import {
+  decideOnLoad, envelope, mergeDocs, preferDrive, readEnvelope, retryDelay, sameDoc, threeWay,
+} from "../model/sync";
 
 const SAVE_DELAY = 1200;
 const cacheKey = (email) => `ahammaxxing:doc:${email || "anon"}`;
@@ -45,7 +47,12 @@ export function useCloudDoc() {
   /* `load` needs to push, and `push` is defined below it. A ref keeps the two
      out of each other's dependency lists without reordering the file. */
   const pushRef = useRef(null);
+  /* The document as Drive last had it. Every save is this, compared with what
+     is here now, applied to whatever Drive holds at the moment of writing —
+     which is what stops a save removing anything it never knew about. */
+  const baseDoc = useRef(null);
   const [pending, setPending] = useState(null);   // { since } while unsent
+  const [dropped, setDropped] = useState(0);      // entries Drive overruled, to own up to
 
   /* ------------------------------------------------------------- helpers -- */
 
@@ -57,7 +64,9 @@ export function useCloudDoc() {
     try {
       await AsyncStorage.setItem(
         cacheKey(email),
-        JSON.stringify(envelope(value, { dirty: d, base, at: since.current })),
+        JSON.stringify(envelope(value, {
+          dirty: d, base, at: since.current, baseDoc: baseDoc.current,
+        })),
       );
     } catch (_) {}
   }, []);
@@ -88,6 +97,9 @@ export function useCloudDoc() {
     if (held && held.dirty) {
       since.current = held.at || new Date().toISOString();
       markPending(true);
+    }
+    if (held && held.baseDoc) {
+      baseDoc.current = held.baseDoc;
     }
     setStatus(cached ? "ready" : "loading");
 
@@ -163,6 +175,24 @@ export function useCloudDoc() {
           return;
         }
 
+        /* Drive is the copy that counts — asked for plainly, and twice. Its
+           version is taken, everything this device alone knew is folded in,
+           and whatever genuinely clashed is counted so it can be owned up to
+           rather than disappearing quietly. */
+        const settled = preferDrive(cached, remote);
+        if (settled) {
+          baseTime.current = modifiedTime;
+          setDoc(settled.doc);
+          latest.current = settled.doc;
+          if (settled.dropped) setDropped((n) => n + settled.dropped);
+          markPending(true);
+          await cache(u.email, settled.doc, { dirty: true, base: modifiedTime });
+          setStatus("ready");
+          setError("");
+          if (pushRef.current) await pushRef.current();
+          return;
+        }
+
         baseTime.current = modifiedTime;
         setConflict({ mine: cached, theirs: remote });
         setStatus("conflict");
@@ -181,6 +211,7 @@ export function useCloudDoc() {
       }
 
       baseTime.current = modifiedTime;
+      baseDoc.current = doc;
       setDoc(doc);
       latest.current = doc;
       markPending(false);
@@ -221,10 +252,41 @@ export function useCloudDoc() {
     clearTimeout(retry.current);
     setStatus("saving");
     try {
-      const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, baseTime.current);
+      /* Writing the whole document replaces every tab, so what goes up has to
+         already contain anything Drive gained since this device last looked.
+         Read first, apply only this device's own changes to it, and send
+         that. A save then cannot remove a day it never knew about, which is
+         the guarantee that was missing. */
+      let outgoing = latest.current;
+      const current = await Sheets.loadDoc({ email: user.email });
+      if (current.doc && current.modifiedTime !== baseTime.current) {
+        const merged = baseDoc.current
+          ? threeWay(baseDoc.current, latest.current, current.doc)
+          : null;
+        if (merged) {
+          outgoing = merged;
+          setDoc(merged);
+          latest.current = merged;
+        } else {
+          /* No record of what Drive last held — a cache from an older
+             version, or a reinstall. Folding the two together keeps
+             everything; it cannot honour a deletion, which is the safer way
+             to be wrong. */
+          const settled = preferDrive(latest.current, current.doc);
+          if (settled) {
+            outgoing = settled.doc;
+            setDoc(settled.doc);
+            latest.current = settled.doc;
+            if (settled.dropped) setDropped((n) => n + settled.dropped);
+          }
+        }
+      }
+
+      const { modifiedTime } = await Sheets.saveDoc(fileId.current, outgoing, null, { force: true });
       baseTime.current = modifiedTime;
+      baseDoc.current = outgoing;
       markPending(false);
-      await cache(user.email, latest.current, { base: modifiedTime });
+      await cache(user.email, outgoing, { base: modifiedTime });
       setStatus("ready");
       setError("");
     } catch (e) {
@@ -257,6 +319,21 @@ export function useCloudDoc() {
             baseTime.current = saved.modifiedTime;
             markPending(false);
             await cache(user.email, merged, { base: saved.modifiedTime });
+            setStatus("ready");
+            setError("");
+            return;
+          }
+          const settled = preferDrive(latest.current, theirs);
+          if (settled) {
+            baseTime.current = modifiedTime;
+            setDoc(settled.doc);
+            latest.current = settled.doc;
+            if (settled.dropped) setDropped((n) => n + settled.dropped);
+            await cache(user.email, settled.doc, { dirty: true, base: modifiedTime });
+            const saved = await Sheets.saveDoc(fileId.current, settled.doc, modifiedTime);
+            baseTime.current = saved.modifiedTime;
+            markPending(false);
+            await cache(user.email, settled.doc, { base: saved.modifiedTime });
             setStatus("ready");
             setError("");
             return;
@@ -356,19 +433,14 @@ export function useCloudDoc() {
       }
       return;
     }
-    // Keeping mine means deliberately overwriting the other side.
+    /* Keeping this device's version used to force a blind write, replacing
+       every tab in Drive with whatever was in memory — which is how days
+       logged elsewhere disappeared. It goes through the ordinary save now,
+       which reads Drive first and applies only this device's own changes.
+       There is no path left that removes something Drive has and this device
+       never knew about. */
     setConflict(null);
-    setStatus("saving");
-    try {
-      const { modifiedTime } = await Sheets.saveDoc(fileId.current, latest.current, null, { force: true });
-      baseTime.current = modifiedTime;
-      markPending(false);
-      await cache(user.email, latest.current, { base: modifiedTime });
-      setStatus("ready");
-    } catch (e) {
-      setError(e.message);
-      setStatus("offline");
-    }
+    if (pushRef.current) await pushRef.current();
   }, [cache, conflict, markPending, user]);
 
   /* ------------------------------------------------------------ session -- */
@@ -544,6 +616,7 @@ export function useCloudDoc() {
 
   return {
     user, doc, status, error, conflict, pending,
+    dropped, clearDropped: () => setDropped(0),
     update, syncNow, resolveConflict,
     signIn, signOut, disconnect, grantAccess, resetPermissions, createIn, exportCsvFile,
     startOver,

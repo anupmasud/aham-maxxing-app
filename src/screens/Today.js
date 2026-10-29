@@ -31,8 +31,11 @@ export default function Today({ doc, update, day, setDay }) {
 
   /* The same lens Setup offers, over the same targets. Kept per screen rather
      than shared: organising is a job you do by area, and getting through the
-     day can reasonably be a different one. */
-  const [grouping, setGrouping] = useState("category");
+     day is a different one — which is why this opens on cadence and Setup
+     does not. What is being asked of you today is "everything due daily",
+     not "everything to do with sleep", and the day reads better grouped by
+     how often a thing is owed than by what it is about. */
+  const [grouping, setGrouping] = useState("cadence");
 
   /* Off by default. Today is the screen you open to tick one thing off, and a
      handle on every row every morning is clutter on the one screen that has

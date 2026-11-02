@@ -97,7 +97,8 @@ export default function Today({ doc, update, day, setDay }) {
     .filter((g) => g.targets.length);
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
+    <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag">
       {/* ---- day navigation ---- */}
       <View style={[S.row, { marginBottom: 12 }]}>
         <Arrow glyph="‹" onPress={() => setDay(M.keyOf(M.addDays(date, -1)))} />

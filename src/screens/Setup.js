@@ -75,7 +75,8 @@ export default function Setup({
     });
 
   return (
-    <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled">
+    <ScrollView style={S.screen} contentContainerStyle={[S.pad, S.scrollPad]} keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag">
       <View style={[S.row, { marginBottom: 14 }]}>
         <Text style={[S.h1, { flex: 1 }]}>Setup</Text>
         <Btn small label="+ Category" onPress={() => setEditCat({})} />

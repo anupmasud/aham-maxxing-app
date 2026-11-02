@@ -20,7 +20,7 @@
    ========================================================================== */
 
 import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
 
 import { C, S, Btn, CatHeader, Chip, LinkText, Note, Sheet, Tick } from "./kit";
 import { Reorderable } from "./Reorder";
@@ -41,11 +41,23 @@ export function TaskCard({
   const isToday = day === M.todayKey();
   const overdue = isToday ? K.overdueBefore(tasks, day) : [];
 
+  /* The keyboard goes away when the task is added.
+
+     It used to stay: `blurOnSubmit={false}` kept focus so several could be
+     typed in a row, and nothing anywhere dismissed it. With no tap-to-dismiss
+     and no swipe-to-dismiss either, the bottom third of the screen was
+     covered until the app was force-quit — which is what was reported, and
+     fair enough.
+
+     Rapid entry is the lesser need. Adding one thing and getting your screen
+     back is the common case, and the return key says "done", which should
+     mean what it says. */
   const add = () => {
     const name = typed.trim();
-    if (!name) return;
+    if (!name) { Keyboard.dismiss(); return; }
     onAdd(name);
     setTyped("");
+    Keyboard.dismiss();
   };
 
   return (
@@ -116,7 +128,6 @@ export function TaskCard({
           onChangeText={setTyped}
           onSubmitEditing={add}
           returnKeyType="done"
-          blurOnSubmit={false}
           placeholder="Add a task for this day"
           placeholderTextColor={C.ink3}
         />

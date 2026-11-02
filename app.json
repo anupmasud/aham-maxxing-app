@@ -12,7 +12,7 @@
       "config": {
         "usesNonExemptEncryption": false
       },
-      "buildNumber": "11"
+      "buildNumber": "12"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,6 +35,14 @@
       "description": "Your definition of success. Your Google Drive."
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ],
       "expo-dev-client",
       [
         "@react-native-google-signin/google-signin",

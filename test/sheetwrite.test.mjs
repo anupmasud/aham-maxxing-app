@@ -113,5 +113,26 @@ console.log("\n6. a row shorter than its neighbours does not shift cells left");
   ]);
 }
 
+console.log("\n7. the transport sends one mutating request, so there is no gap to fall into");
+{
+  /* The unit tests above describe the requests. This one is about the call
+     that carries them: the whole point is that a save cannot be half-applied,
+     and that is only true while writeTabs makes exactly one write. A second
+     one creeping back in — a clear, a tidy-up, a resize done separately —
+     would quietly reopen the window that lost two months. */
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const src = fs.readFileSync(path.join(dir, "..", "src", "google", "sheets.js"), "utf8");
+  const body = src.slice(src.indexOf("async function writeTabs"), src.indexOf("export async function saveDoc"));
+
+  const mutating = (body.match(/method:\s*"(POST|PUT|PATCH|DELETE)"/g) || []).length;
+  eq("exactly one mutating request", mutating, 1);
+  eq("and it is a spreadsheets batchUpdate", /:batchUpdate`/.test(body), true);
+  eq("the values clear endpoint is gone for good", /values:batchClear/.test(body), false);
+  eq("so is the separate values write", /values:batchUpdate/.test(body), false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

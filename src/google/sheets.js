@@ -17,6 +17,7 @@ import { getAccessToken } from "./auth";
 import { resolveFolder, folderUrl } from "./drive";
 import { CONFIG } from "../config";
 import { TABS, docToSheets, sheetsToDoc } from "../model/sheetFormat";
+import { writeRequests } from "../model/sheetWrite";
 
 const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 const FILES = "https://www.googleapis.com/drive/v3/files";
@@ -199,18 +200,26 @@ export async function loadDoc({ createIn = null, email = null } = {}) {
 
 /* ----------------------------------------------------------------- write -- */
 
+/* Writes every tab in a single atomic request.
+
+   This was two calls until a save was interrupted between them. The first
+   emptied every tab and the second filled them again, so a connection that
+   died in the middle left the spreadsheet blank — and the next sync read that
+   blankness as what Drive meant to say. Months of logged days went that way,
+   and the window was widest exactly when a save was most likely to fail.
+
+   A spreadsheets.batchUpdate either applies in full or not at all, so there
+   is no longer a moment when the data is gone. A failed save now leaves the
+   sheet precisely as it was, which is the only safe thing for it to do. The
+   request shape is built in model/sheetWrite.js, where it is tested. */
 async function writeTabs(id, tabs) {
-  await req(`${SHEETS}/${id}/values:batchClear`, {
+  const meta = await req(`${SHEETS}/${id}?fields=sheets.properties`);
+  const props = (meta.sheets || []).map((s) => s.properties);
+  const requests = writeRequests(ORDER, tabs, props);
+  if (!requests.length) return;
+  await req(`${SHEETS}/${id}:batchUpdate`, {
     method: "POST",
-    body: JSON.stringify({ ranges: ORDER.map((t) => `${t}!A1:ZZ100000`) }),
-  });
-  await req(`${SHEETS}/${id}/values:batchUpdate`, {
-    method: "POST",
-    body: JSON.stringify({
-      valueInputOption: "RAW",
-      data: ORDER.filter((t) => (tabs[t] || []).length)
-        .map((t) => ({ range: `${t}!A1`, values: tabs[t] })),
-    }),
+    body: JSON.stringify({ requests }),
   });
 }
 

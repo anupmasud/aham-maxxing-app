@@ -257,5 +257,73 @@ console.log("\n14. a target's notes, newest first, for reading back");
   eq("no notes at all", M.targetNotes({}, "t_upper"), []);
 }
 
+console.log("\n15. everything still open, wherever it was set");
+{
+  /* The gap this closes: a task set for a day you never opened is drawn only
+     beside that day. Today shows today's plus overdue, so something set for
+     next Tuesday and then forgotten is invisible until next Tuesday. */
+  const tasks = [
+    { id: "a", day: "2026-09-02", name: "old and open", order: 0 },
+    { id: "b", day: "2026-09-02", name: "old and done", order: 1, done: true },
+    { id: "c", day: "2026-08-20", name: "older still", order: 0 },
+    { id: "d", day: "2026-09-10", name: "today's", order: 1 },
+    { id: "e", day: "2026-09-10", name: "today's, done", order: 0, done: true },
+    { id: "f", day: "2026-09-11", name: "tomorrow", order: 0 },
+    { id: "g", day: "2026-12-01", name: "far off", order: 0 },
+  ];
+  const g = M.openGroups(tasks, "2026-09-10");
+
+  eq("overdue, oldest first", g.overdue.map((t) => t.id), ["c", "a"]);
+  eq("today's own", g.today.map((t) => t.id), ["d"]);
+  eq("and what is coming, soonest first", g.later.map((t) => t.id), ["f", "g"]);
+
+  // The whole question is "what have I not finished".
+  eq("nothing finished appears anywhere",
+     [...g.overdue, ...g.today, ...g.later].some((t) => t.done), false);
+  eq("a day's completed task is not in today's group",
+     g.today.some((t) => t.id === "e"), false);
+
+  // Every open task lands in exactly one group, and none goes missing.
+  const seen = [...g.overdue, ...g.today, ...g.later].map((t) => t.id).sort();
+  eq("every open task placed once", seen, ["a", "c", "d", "f", "g"]);
+
+  eq("counted", M.openCount(tasks, "2026-09-10"),
+     { overdue: 2, today: 1, later: 2, total: 5 });
+}
+
+console.log("\n16. the open list agrees with what Today already showed");
+{
+  /* Two views of the same thing must not disagree — the overdue list on
+     Today is the same set as the overdue group here, or one screen is
+     quietly lying. */
+  const tasks = [
+    { id: "a", day: "2026-09-01", name: "one", order: 0 },
+    { id: "b", day: "2026-09-03", name: "two", order: 0 },
+    { id: "c", day: "2026-09-03", name: "done", order: 1, done: true },
+    { id: "d", day: "2026-09-10", name: "today", order: 0 },
+  ];
+  eq("same overdue set, same order",
+     M.openGroups(tasks, "2026-09-10").overdue.map((t) => t.id),
+     M.overdueBefore(tasks, "2026-09-10").map((t) => t.id));
+  eq("same today set",
+     M.openGroups(tasks, "2026-09-10").today.map((t) => t.id),
+     M.tasksOn(tasks, "2026-09-10").filter((t) => !M.isDone(t)).map((t) => t.id));
+}
+
+console.log("\n17. an empty or odd list does not throw");
+{
+  eq("no tasks at all", M.openCount([], "2026-09-10"),
+     { overdue: 0, today: 0, later: 0, total: 0 });
+  eq("undefined", M.openCount(undefined, "2026-09-10"),
+     { overdue: 0, today: 0, later: 0, total: 0 });
+  eq("not a list", M.openGroups(null, "2026-09-10"),
+     { overdue: [], today: [], later: [] });
+  // A task with no usable day is treated as today's, the same as everywhere.
+  eq("a task with no day is today's",
+     M.openGroups([{ id: "x", name: "stray" }], M.todayKey()).today.map((t) => t.id), ["x"]);
+  eq("everything done", M.openCount(
+     [{ id: "a", day: "2026-09-01", done: true }], "2026-09-10").total, 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -27,7 +27,7 @@ import { Reorderable } from "./Reorder";
 import * as K from "../model/tasks";
 import * as M from "../model/targets";
 
-const fmtShort = (key) =>
+export const fmtShort = (key) =>
   M.parseKey(key).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
 export function TaskCard({
@@ -145,7 +145,7 @@ export function TaskCard({
    rather than only in the sheet is deliberate: shunting an unfinished thing
    to tomorrow is the single most common thing anyone does to a to-do list,
    and it should not cost a modal. */
-function TaskRow({ t, late, grip, onToggle, onOpen, onPush }) {
+export function TaskRow({ t, late, grip, onToggle, onOpen, onPush }) {
   const done = K.isDone(t);
   return (
     <View style={[S.row, { paddingVertical: 11, paddingHorizontal: 13, gap: 11 }]}>

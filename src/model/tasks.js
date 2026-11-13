@@ -149,6 +149,51 @@ export function taskCounts(tasks, dayKey) {
 export const taskDays = (tasks) =>
   Array.from(new Set(taskList(tasks).map(dayOf))).sort();
 
+/* ------------------------------------------------------- everything open -- */
+
+/* Every unfinished task, split by where it stands relative to a day.
+
+   Today's screen answers "what am I doing today", which is the right question
+   most of the time and the wrong one when something set for a Tuesday three
+   weeks ago has been quietly scrolling past. A task set for a day you never
+   opened is invisible: it is not today's, and it is only ever drawn beside
+   the day it belongs to. That is the gap this fills.
+
+   Three groups rather than one list, because they want different things from
+   you. Overdue is a debt — oldest first, so the longest-waiting is top, and
+   the pile reads as a queue. Today is the plan. Later is a promise, soonest
+   first, and is there to be glanced at rather than worked.
+
+   Done tasks are deliberately absent. "What have I not finished" is the whole
+   question; a completed errand from September is not an answer to it, and
+   including them would bury the few things that matter under months of
+   furniture. */
+export function openGroups(tasks, dayKey) {
+  const open = taskList(tasks).filter((t) => !isDone(t));
+  const byDayThen = (dir) => (a, b) =>
+    dir * dayOf(a).localeCompare(dayOf(b)) || byOrder(a, b);
+
+  return {
+    overdue: open.filter((t) => dayOf(t) < dayKey).sort(byDayThen(1)),
+    today: open.filter((t) => dayOf(t) === dayKey).sort(byOrder),
+    later: open.filter((t) => dayOf(t) > dayKey).sort(byDayThen(1)),
+  };
+}
+
+/* The same split as a tally, for the tab badge and the empty state. `total`
+   counts every open task, which is the number worth showing: a badge that
+   left out next week's would go up when a day arrived rather than when work
+   appeared. */
+export function openCount(tasks, dayKey) {
+  const g = openGroups(tasks, dayKey);
+  return {
+    overdue: g.overdue.length,
+    today: g.today.length,
+    later: g.later.length,
+    total: g.overdue.length + g.today.length + g.later.length,
+  };
+}
+
 /* Clearing old history takes tasks with it, but that filter lives in
    `historyBefore` / `clearHistoryBefore` beside the log's, so that "before
    this date" is decided in one place rather than two. */

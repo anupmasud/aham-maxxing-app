@@ -26,10 +26,12 @@ import * as Reminders from "./src/reminders";
 import Today from "./src/screens/Today";
 import Week from "./src/screens/Week";
 import Insights from "./src/screens/Insights";
+import Todo from "./src/screens/Todo";
 import Setup from "./src/screens/Setup";
 
 const TABS = [
   { key: "today", label: "Today", icon: "◉" },
+  { key: "todo", label: "To do", icon: "✓" },
   { key: "week", label: "Week", icon: "▦" },
   { key: "insights", label: "Insights", icon: "◔" },
   { key: "setup", label: "Setup", icon: "⚙" },
@@ -366,6 +368,7 @@ export default function App() {
 
       <View style={{ flex: 1 }}>
         {tab === "today" && <Today {...props} />}
+        {tab === "todo" && <Todo {...props} />}
         {tab === "week" && <Week {...props} />}
         {tab === "insights" && <Insights {...props} />}
         {tab === "setup" && <Setup {...props} />}

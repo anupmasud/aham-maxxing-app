@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Options for `xcodebuild -exportArchive` when it should send the build to
+  App Store Connect itself, rather than writing an .ipa for something else to
+  upload.
+
+  This exists because `xcrun altool --upload-app` stopped working: the
+  embedded iTMSTransporter it shells out to is no longer shipped inside
+  Xcode, so altool fails with "The file Defaults.properties couldn't be
+  opened" — and, unhelpfully, still exits 0, so a script that trusts the exit
+  code believes it uploaded. It had worked for every build up to 13, which is
+  exactly the sort of thing that changes under you after an Xcode update.
+
+  xcodebuild does the upload directly and is the supported path:
+
+      xcodebuild -exportArchive \
+        -archivePath <archive> \
+        -exportOptionsPlist scripts/ExportOptionsUpload.plist \
+        -exportPath <somewhere>
+
+  Note what is NOT there: -authenticationKeyPath and friends. Passing the
+  App Store Connect API key switches xcodebuild to cloud signing, which this
+  key cannot do — its role may upload builds but not create certificates, so
+  the export dies with "No signing certificate iOS Distribution found" even
+  though the certificate is sitting in the keychain and an ordinary export
+  signs with it perfectly well. Left alone, xcodebuild signs locally and
+  uploads using the Apple account signed into Xcode, which is what works.
+
+  Identical to ExportOptions.plist apart from `destination`. The two are kept
+  separate so an ordinary export, for inspecting or archiving an .ipa
+  locally, cannot accidentally ship a build.
+-->
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>teamID</key>
+  <string>SFXV897A5H</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+  <key>uploadSymbols</key>
+  <true/>
+  <key>destination</key>
+  <string>upload</string>
+</dict>
+</plist>

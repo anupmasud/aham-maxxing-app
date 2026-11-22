@@ -7,7 +7,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet,
+  Text, TextInput, View,
 } from "react-native";
 
 import { useCloudDoc } from "./src/store/useCloudDoc";
@@ -29,9 +30,25 @@ import Insights from "./src/screens/Insights";
 import Todo from "./src/screens/Todo";
 import Setup from "./src/screens/Setup";
 
+/* The To do tab is off on iOS for the moment.
+
+   Build 14 added it and is the first build ever to report crashes — four of
+   them across fifty sessions, against zero for 12 and 13. That is not proof
+   the tab is the cause, and the code has been read, tested and rendered on
+   the web without trouble. But it is the only thing that changed, and a
+   crashing app is worse than a missing screen, so it comes off the phone
+   until the crash report says what actually happened.
+
+   It stays on the web, which is not crashing and where the tab is in use.
+   That also makes the next build an experiment worth running: if iOS still
+   crashes without it, the tab was never the problem and the search moves on.
+
+   Temporary. Delete this condition once the cause is known either way. */
+const SHOW_TODO = Platform.OS === "web";
+
 const TABS = [
   { key: "today", label: "Today", icon: "◉" },
-  { key: "todo", label: "To do", icon: "✓" },
+  ...(SHOW_TODO ? [{ key: "todo", label: "To do", icon: "✓" }] : []),
   { key: "week", label: "Week", icon: "▦" },
   { key: "insights", label: "Insights", icon: "◔" },
   { key: "setup", label: "Setup", icon: "⚙" },
@@ -368,7 +385,7 @@ export default function App() {
 
       <View style={{ flex: 1 }}>
         {tab === "today" && <Today {...props} />}
-        {tab === "todo" && <Todo {...props} />}
+        {SHOW_TODO && tab === "todo" && <Todo {...props} />}
         {tab === "week" && <Week {...props} />}
         {tab === "insights" && <Insights {...props} />}
         {tab === "setup" && <Setup {...props} />}

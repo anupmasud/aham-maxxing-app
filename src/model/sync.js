@@ -237,10 +237,17 @@ function threeWayDayMap(base, mine, theirs) {
   const t = asMap(theirs);
   const out = { ...t };
 
-  // Days removed here on purpose.
-  for (const day of Object.keys(b)) {
-    if (!(day in m)) delete out[day];
-  }
+  /* A whole day missing from this device used to be read as "deleted on
+     purpose" and removed from Drive. Nothing in the app deletes a day — there
+     is no control for it — so that branch could only ever fire when the local
+     copy was incomplete for some other reason, and when it fired it took real
+     history with it. Seven days of logs went that way on 8 September 2026.
+
+     Absence is no longer evidence. A day Drive holds stays in Drive. Unticking
+     still works, because that is a target disappearing from a day this device
+     *does* have, and is handled below against `base`. The cost of this is that
+     a day genuinely deleted somewhere else comes back; the cost of the old
+     behaviour was losing a week of someone's life. */
 
   for (const day of Object.keys(m)) {
     const mineDay = asMap(m[day]);

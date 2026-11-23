@@ -330,9 +330,19 @@ console.log("\n22. deleting still works, because the base says it was deliberate
   const out = M.threeWay(base, mine, theirs);
   eq("the untick sticks", out.log["2026-10-27"], { t1: 1 });
 
-  // A whole day cleared here is removed there.
-  const cleared = M.threeWay(mk({ "2026-10-27": { t1: 1 } }), mk({}), mk({ "2026-10-27": { t1: 1 } }));
-  eq("a cleared day goes", Object.keys(cleared.log), []);
+  /* A whole day *absent* from this device used to be removed from Drive, and
+     this test used to assert that. It is how seven days of logs were deleted
+     on 8 September 2026: nothing in the app can delete a day, so the only
+     thing that branch ever recognised was a local copy gone incomplete.
+     Absence is no longer evidence — see section 27. */
+  const absent = M.threeWay(mk({ "2026-10-27": { t1: 1 } }), mk({}), mk({ "2026-10-27": { t1: 1 } }));
+  eq("a day absent from this device is kept", Object.keys(absent.log), ["2026-10-27"]);
+
+  // Present but emptied is a real untick, and still removes the day.
+  const cleared = M.threeWay(
+    mk({ "2026-10-27": { t1: 1 } }), mk({ "2026-10-27": {} }), mk({ "2026-10-27": { t1: 1 } }),
+  );
+  eq("a day emptied here still goes", Object.keys(cleared.log), []);
 }
 
 console.log("\n23. an entry changed in both places takes this device's change");
@@ -394,6 +404,77 @@ console.log("\n26. the cache remembers what Drive last had");
   eq("read back", M.readEnvelope(e).baseDoc, baseDoc);
   eq("a cache written before it existed has none",
      M.readEnvelope({ v: 2, doc, dirty: true, base: "T" }).baseDoc, null);
+}
+
+console.log("\n27. absence is not a deletion — a day this device lost stays in Drive");
+{
+  const mk = (log) => ({
+    categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log,
+  });
+
+  /* The 8 September 2026 case, as it actually happened. Drive holds the week
+     and so does the last-synced snapshot; the copy on this device has lost it.
+     The old code read that absence as seven deliberate deletions and wiped
+     them from Drive. */
+  const week = { "2026-08-31": { t1: 1 }, "2026-09-01": { t1: 1, t2: 6 } };
+  const out = M.threeWay(
+    mk({ ...week, "2026-09-07": { t1: 1 } }),
+    mk({ "2026-09-07": { t1: 1 } }),
+    mk({ ...week, "2026-09-07": { t1: 1 } }),
+  );
+  eq("days missing only from this device survive",
+     Object.keys(out.log).sort(), ["2026-08-31", "2026-09-01", "2026-09-07"]);
+  eq("with Drive's values intact", out.log["2026-09-01"], { t1: 1, t2: 6 });
+
+  // The same guarantee for the other day-keyed tabs.
+  const notes = M.threeWay(
+    { ...mk({}), notes: { "2026-08-31": "a good day" } },
+    { ...mk({}), notes: {} },
+    { ...mk({}), notes: { "2026-08-31": "a good day" } },
+  );
+  eq("notes too", notes.notes, { "2026-08-31": "a good day" });
+}
+
+console.log("\n28. deletions this device really made are still honoured");
+{
+  const mk = (log) => ({
+    categories: [], targets: [], timers: [], breaks: [], tasks: [], plans: {}, notes: {}, log,
+  });
+
+  // Unticking is a target leaving a day this device still has.
+  eq("a target unticked here is removed in Drive",
+     M.threeWay(
+       mk({ "2026-09-07": { t1: 1, t2: 1 } }),
+       mk({ "2026-09-07": { t1: 1 } }),
+       mk({ "2026-09-07": { t1: 1, t2: 1 } }),
+     ).log["2026-09-07"],
+     { t1: 1 });
+
+  // Untick everything and the day itself is empty, which is not data loss.
+  eq("a day emptied here disappears",
+     "2026-09-07" in M.threeWay(
+       mk({ "2026-09-07": { t1: 1 } }),
+       mk({ "2026-09-07": {} }),
+       mk({ "2026-09-07": { t1: 1 } }),
+     ).log,
+     false);
+
+  eq("a day logged here reaches Drive",
+     M.threeWay(mk({}), mk({ "2026-09-09": { t1: 1 } }), mk({})).log,
+     { "2026-09-09": { t1: 1 } });
+
+  eq("a day another device added survives",
+     M.threeWay(mk({}), mk({}), mk({ "2026-09-10": { t1: 1 } })).log,
+     { "2026-09-10": { t1: 1 } });
+
+  // Both sides moved: this device's edit lands, Drive's other day is kept.
+  const both = M.threeWay(
+    mk({ "2026-09-07": { t1: 1 } }),
+    mk({ "2026-09-07": { t1: 1, t2: 1 } }),
+    mk({ "2026-09-07": { t1: 1 }, "2026-09-08": { t1: 1 } }),
+  );
+  eq("this device's tick lands", both.log["2026-09-07"], { t1: 1, t2: 1 });
+  eq("Drive's other day is kept", both.log["2026-09-08"], { t1: 1 });
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
